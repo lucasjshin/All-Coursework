@@ -1,0 +1,223 @@
+---
+title: "HW1"
+author: "Kaela Finegan, Lucas Shin, Cody Kim"
+date: "9/29/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(echo = TRUE, message = FALSE) 
+``` 
+
+We are using the diamonds data set to predict on price of each diamond. We are using
+several variables such as color, cut, etc to predict price. We got rid of the clarity
+column because it contained many, specific qualitative elements. We changed the color
+and cut values to be numbers instead of letters with highest number being the best.This 
+assumes that the 'distance' between each of the categories has the same distance which 
+seemed fair enough to us.
+These are the encodings for Cut and Color:
+Cut:
+Ideal = 5
+Premium = 4
+Very Good = 3
+Good = 2
+Fair = 1
+
+Color:
+D = 7
+E = 6 
+F = 5
+G = 4 
+H = 3
+I = 2
+J = 1
+Here is a look at the first few rows of the data set:
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(FNN)
+diamonds.data <- diamonds %>% 
+  subset(select = -c(clarity)) %>% 
+  mutate(color1 = ifelse(color == "D",7,ifelse(color == "E", 6, ifelse(color == "F", 5, ifelse(color=="G", 4, ifelse(color == "H", 3, ifelse(color == "I", 2, ifelse(color == "J", 1, 0)))))))) %>% 
+  na.omit() %>% 
+  subset(select = -c(color)) %>% 
+  mutate(cut1 = ifelse(cut == "Ideal", 5, ifelse(cut == "Premium", 4, ifelse(cut == "Very Good", 3, ifelse(cut == "Good", 2, ifelse(cut == "Fair", 1, 0))))))
+  
+
+diamonds.data <- diamonds.data %>% 
+  transform(price = sample(price) ) %>% 
+  mutate(fold = sample(1:5, 1, size=nrow(diamonds.data))) %>% 
+  subset(select = -c(cut))
+
+# TAKE THIS LINE OUT FOR FINAL TURN IN
+diamonds.data <- diamonds.data[1:1000,]
+
+head(diamonds.data, 5)
+```
+
+```{r}
+#make a vector 
+pred.vector <- NULL
+error.vector <- NULL
+
+k <- 2
+fold2 <- 1
+
+for(k in 1:120){
+  for(fold2 in 1:5){
+    
+    # create my test data
+    test.data <- diamonds.data %>% 
+      filter(fold == fold2) %>% 
+      select(-price)
+    
+    # create training data 
+    training.data <- diamonds.data %>% 
+      filter(fold != fold2)
+    
+    training.data.no.price <- training.data %>% 
+      select(-price)
+    
+    # let's try knn
+    
+    model1 <- knn.reg(train = training.data.no.price, 
+                      test = test.data,
+                      k = k,
+                      y = training.data$price)
+    
+    #what is the error (difference between predicted price and true price)
+    pred.vector[fold2] <- model1$pred - (diamonds.data %>% 
+                                         filter(fold == fold2)%>% 
+                                         pull(price))
+    
+    #track progress of row
+    #print(row)
+  }
+  # average error for a given value of k across all data values
+  error.vector[k] <- mean((sum(pred.vector))^2)
+  #track progress of my loop
+  #print(k)
+}
+
+# How good is each k?
+pred.data <- data.frame(error.vector,
+                        k = 1:120)
+pred.data %>%
+  ggplot(aes(x = k,
+             y = error.vector)) +
+  geom_point() +
+  labs(x = "k", y = "Error")
+```
+Since our data set is so large we separated our data into 5 folds randomly. Then we looped
+through 120 different k values and found the total error for each fold. Then after we looped 
+through all the folds, we squared each fold error to
+make sure each error was worth more and there are no negative errors,
+took the sum of all fold errors, and then took the mean to get the average error.
+
+k=100 is the optimal k value. k=100 has the lowest error. After 100, the points are 
+approximately equal in error. 
+
+```{r}
+colnames(diamonds.data) <- c("carat","depth","table","price","x","y","z",
+                             "color","cut","fold")
+
+ggplot(mapping = aes(x = carat, y = color)) + 
+        geom_point(size = .8, data = diamonds.data, aes(color = price))
+```
+
+```{r}
+ggplot(mapping = aes(x = carat, y = cut)) + 
+        geom_point(size = .8, data = diamonds.data, aes(color = price))
+```
+```{r}
+#Let's make a grid of all possible combinations of carat and cut1
+grid <- expand.grid(carat = seq(from = 0, to = 5, by = .1),
+                    cut = seq(from = 1, to = 5, by = 1))
+
+grid <- grid %>%
+  group_by(carat, cut)
+
+medians <- diamonds.data %>%
+  select(-price, -cut, -carat) %>%
+  summarize_all(median)
+
+
+prediction = knn.reg(train = diamonds.data %>% select(-price), 
+                     test = grid %>% mutate(medians),
+                     k = 100,
+                     y = diamonds.data)
+
+grid <- grid %>%
+  cbind(prediction$pred) 
+colnames(grid) <- c("carat", "cut", "prediction")
+
+#Make graph
+grid %>%
+  ggplot() +
+  geom_point(size = 5, mapping = aes(x = carat, y = cut, color = prediction)) +
+  theme_bw()
+```
+
+In this graph we can see that when carat and cut are high, the predicted prices 
+are higher. When the carat and cut are higher the predicted prices are higher. 
+This is what one would expect. In general, when carat increases
+the predicted price increases (no matter what the cut). In general when cut 
+increases, the predicted price increases (no matter the carat). This is what one
+would expect.
+
+Let's try it at a sub-optimal k:
+
+```{r}
+#Let's make a grid of all possible combinations of carat and cut1
+grid <- expand.grid(carat = seq(from = 0, to = 5, by = .1),
+                    cut = seq(from = 1, to = 5, by = 1))
+
+grid <- grid %>%
+  group_by(carat, cut)
+
+medians <- diamonds.data %>%
+  select(-price, -cut, -carat) %>%
+  summarize_all(median)
+
+
+prediction = knn.reg(train = diamonds.data %>% select(-price), 
+                     test = grid %>% mutate(medians),
+                     k = 20,
+                     y = diamonds.data)
+
+grid <- grid %>%
+  cbind(prediction$pred) 
+colnames(grid) <- c("carat", "cut", "prediction")
+
+#Make graph
+grid %>%
+  ggplot() +
+  geom_point(size = 5, mapping = aes(x = carat, y = cut, color = prediction)) +
+  theme_bw()
+```
+At a sub-optimal k, it looks like most of the predictions are low. This does not
+tell us anything more interesting.
+
+   pros:
+      - the math behind predictions is more-or-less understandable
+      - minimal assumptions (we assume we can define a distance in each dimension)
+      - we were able to use regression
+      - our categorical data was very easy to switch to numerical, making it easier 
+        to run the knn algorithm
+   cons:
+      - "subjective" choice of k, our hyperparameter
+      - we have to choose a distance metric (but there are many common metrics that 
+        can't handle categorical variables)
+      - no way of knowing which variables are causing our algorithm to be good or 
+        bad
+      - our diamonds data set was large and had many rows, so the run time was very 
+        long (computationally intensive)
+      - it's not necessarily true that the distance between our cut and color categories
+        is the same; e.g. "fair" and "good" might not have same distance as "premium" 
+        and "ideal"
+        
+We were able to determine from our graph that as you increase the carat and cut of
+the diamonds, the predicted price also increased. This is most likely an insight 
+that we could have gained from a more rigid algorithm. Another insight we gained is
+that the carat and the cut generally impacted the predicted price equally.
+

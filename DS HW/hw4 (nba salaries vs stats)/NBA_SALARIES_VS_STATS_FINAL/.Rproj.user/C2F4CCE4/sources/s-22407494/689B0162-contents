@@ -1,0 +1,45 @@
+# gun.data<- read_csv("gun-violence-data_01-2013_03-2018.csv")
+# 
+# gun.data2 <- gun.data %>% 
+#   select(date, state, city_or_county, n_killed, n_injured) %>% 
+#   filter(city_or_county %in% c("Chicago", "Houston", "Los Angeles"))
+# 
+# write.csv(gun.data2, "GunData.csv")
+
+# disney <- read_csv("disney_movies.csv")
+# 
+# disney <- disney %>% 
+#   mutate(year = substr(release_date, 1, 4)) %>% 
+#   mutate(decade = paste(substr(release_date, 1, 3), "0", sep=""))
+# write.csv(disney, "DecadeDisney.csv")
+
+nba <- read_csv("nba_team_stats_00_to_18.csv")
+colnames(nba)[6] <- "WinPercentage"
+colnames(nba)[11] <- "FGPercentage"
+colnames(nba)[12] <- "ThreePM"
+colnames(nba)[13] <- "ThreePA"
+colnames(nba)[14] <- "ThreePointPercentage"
+colnames(nba)[17] <- "FTPercentage"
+colnames(nba)[28] <- "PlusMinus"
+nba3 <- nba %>% 
+  mutate(TEAM = str_replace(TEAM, "LA", "Los Angeles")) %>% 
+  mutate(TEAM = str_replace(TEAM, "Seattle SuperSonics", "Washington Wizards")) %>% 
+  mutate(TEAM = str_replace(TEAM, "Vancouver", "Memphis")) %>% 
+  mutate(TEAM = str_replace(TEAM, "New Jersey", "Brooklyn"))
+nba2 <- nba3 %>% 
+  filter(TEAM %in% c("Atlanta Hawks", "Chicago Bulls", "Houston Rockets", "Los Angeles Clippers", 
+                     "Golden State Warriors", "Philadelphia 76ers", "Los Angeles Lakers", "Washington Wizards", 
+                     "New York Knicks", "Milwaukee Bucks"))
+nba4 <- nba2 %>%
+  mutate(image = "hi")
+nba4$image[nba4$TEAM == "Atlanta Hawks"] <- "http://assets.stickpng.com/thumbs/58419be4a6515b1e0ad75a58.png"  
+nba4$image[nba4$TEAM == "Chicago Bulls"] <- "http://assets.stickpng.com/thumbs/58419cf6a6515b1e0ad75a6b.png"
+nba4$image[nba4$TEAM == "Los Angeles Clippers"] <- "http://assets.stickpng.com/thumbs/58419c59a6515b1e0ad75a60.png"
+nba4$image[nba4$TEAM == "Golden State Warriors"] <- "http://assets.stickpng.com/thumbs/58419ce2a6515b1e0ad75a69.png"
+nba4$image[nba4$TEAM == "Philadelphia 76ers"] <- "http://assets.stickpng.com/thumbs/58419ca3a6515b1e0ad75a64.png"
+nba4$image[nba4$TEAM == "Los Angeles Lakers"] <- "http://assets.stickpng.com/thumbs/58419d0aa6515b1e0ad75a6c.png"
+nba4$image[nba4$TEAM == "Washington Wizards"] <- "http://assets.stickpng.com/thumbs/58419c12a6515b1e0ad75a5b.png"
+nba4$image[nba4$TEAM == "New York Knicks"] <- "http://assets.stickpng.com/thumbs/58419cc8a6515b1e0ad75a67.png"
+nba4$image[nba4$TEAM == "Milwaukee Bucks"] <- "http://assets.stickpng.com/thumbs/58419ba7a6515b1e0ad75a54.png"
+nba4$image[nba4$TEAM == "Houston Rockets"] <- "http://assets.stickpng.com/thumbs/58419ceda6515b1e0ad75a6a.png"
+write.csv(nba4, "nbaData.csv")

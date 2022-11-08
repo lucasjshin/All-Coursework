@@ -1,0 +1,36 @@
+"0","nba.data <- read_csv(""nba_rankings_2014-2020.csv"") %>% "
+"0","   select(-X1, -TEAM, -OREB, -DREB, -FP, -PF, -L, -DD2, -TD3) %>% "
+"0","   mutate(win.percentage = W/GP) %>% "
+"0","   select(-W)"
+"2","Missing column names filled in: 'X1' [1]"
+"2","Parsed with column specification:
+cols(
+  .default = col_double(),
+  PLAYER = [31mcol_character()[39m,
+  TEAM = [31mcol_character()[39m,
+  SEASON = [31mcol_character()[39m
+)
+"
+"2","See spec(...) for full column specifications.
+"
+"0","colnames(nba.data)[22] <- ""rating"""
+"0",""
+"0","nba.data.before.with.names <- nba.data %>% "
+"0","   filter(SEASON == ""2017-18"") %>% "
+"0","   select(-SEASON)"
+"0",""
+"0","nba.data.before <- nba.data %>% "
+"0","   filter(SEASON == ""2017-18"") %>% "
+"0","   select(-SEASON, -PLAYER)"
+"0",""
+"0","nba.data.after <- nba.data %>% "
+"0","   filter(SEASON == ""2019-20"") %>% "
+"0","   select(-SEASON, -PLAYER)"
+"0",""
+"0","# rename columns"
+"0","colnames(nba.data.before)[7] <- 'FG.percent'"
+"0","colnames(nba.data.before)[8] <- 'Threes.Made'"
+"0","colnames(nba.data.before)[9] <- 'Threes.Attempted'"
+"0","colnames(nba.data.before)[10] <- 'Threes.percent'"
+"0","colnames(nba.data.before)[13] <- 'FT.percent'"
+"0","colnames(nba.data.before)[19] <- 'Plus.Minus'"

@@ -1,0 +1,288 @@
+---
+title: "HW2"
+author: "Lucas Shin, Kaela Finegan, Cody Kim"
+date: "10/13/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message= FALSE)
+library(MASS)
+library(ISLR)
+library(tidyverse)
+library(dplyr)
+```
+
+
+Our data set contains the stats for all NBA players in the past 20 years for each of their seasons. We will try to predict if a player was drafted in the first round based on statistics for players' age 27 season. We decided to select statistics that we thought would have an impact on if a player is drafted in the first round or not. Since each player might appear multiple times in the data, once for each season played in the past 20 years, we needed to filter so that they would only appear once. Since filtering by the player’s first season could be problematic if they didn’t play much and filtering by the most recent season would exclude a ton of players, we decided to filter by a player being 27 years old. This is thought to be the prime age for playing in the NBA (average age of All-NBA players - https://hoopshype.com/2018/12/31/nba-aging-curve-father-time-prime-lebron-james-decline/). While this will still exclude some players, it will only exclude players who did not make it to age 27 with the NBA. This is not ideal, but for our scope and the purposes of this assignment, this will work. We also filtered out players who were undrafted because later when we use lda, it was necessary in order to find the proportion of players drafted in the first round. If we had left the undrafted players in, our proportion of players drafted in the first round would not be correct anymore since it is out of all players instead of out of all drafted players. In the end we mutated a column called first_round that is a 1 if the player was drafted in the first round and a 0 if the player was not drafted in the first round.
+
+We will try to predict if a player was drafted in the first round based on statistics from the players’ prime season (which on average was when they were 27 years old).
+
+
+```{r cars}
+draft.data <- read_csv("all_seasons.csv") %>% 
+   dplyr::select(player_name, age, player_height, player_weight, draft_year, draft_round, gp, pts, reb, ast, net_rating, usg_pct) %>%
+   filter(age == 27) %>% 
+   filter(draft_round != "Undrafted") %>% 
+   mutate(first_round = ifelse(draft_round==1,
+                               1, 0)) 
+
+draft.data <- na.omit(draft.data)
+   
+
+# find out our proportions
+print(draft.data %>% summarize(Proportion.First = mean(first_round, na.rm = TRUE)))
+print(draft.data %>% summarize(Proportion.Not.First = 1 - mean(first_round, na.rm = TRUE)))
+   
+```
+The above printed values are about 0.696 proportion drafted in the first round and 0.304 not drafted in the first round but still drafted of the players who made it to age 27. They will be used as our proportions in our lda
+model.
+
+```{r}
+lda.firstRound <- lda(first_round ~ pts + usg_pct, data = draft.data, prior = c(0.696, 0.304))
+
+#Let's start by looking just at income
+
+draft.data %>%
+  ggplot() +
+  geom_point(aes(x = pts, y = 0, color = factor(first_round)),
+             alpha = 0.3) +
+   labs(x = "Points", y = "", title="Points Colored by First Round") + 
+   scale_color_discrete("First Round")
+```
+The above graph shows points earned by each player in our data set for their age 27 season. The points are colored red if they were not drafted in the first round and blue if they were drafted in the first round. 
+
+```{r}
+
+#Let's plot the density functions
+draft.data %>%
+  ggplot() +
+  geom_density(aes(x = pts, fill = factor(first_round)),
+               alpha = 0.3) +
+   labs(x = "Points", y ="Density", title = "Density of Points") + 
+   scale_fill_discrete("First Round")
+   
+```
+The above graph shows the density of points earned by each player in our data set for their age 27 season. The points are colored red if they were not drafted in the first round and blue if they were drafted in the first round. This is skewed left so not many players get a lot of points.
+```{r}
+#Let's look at balance
+
+draft.data %>%
+  ggplot() +
+  geom_point(aes(x = usg_pct, y = 0, color = factor(first_round)),
+             alpha = 0.3) +
+   labs(x = "Usage Percentage", y = "", title="Usage Percentage Colored by First Round") + 
+   scale_color_discrete("First Round")
+```
+The above graph shows the average usage percentage by each player in our data set for their age 27 season. The points are colored red if they were not drafted in the first round and blue if they were drafted in the first round.
+
+```{r}
+#Let's plot the density functions
+draft.data %>%
+  ggplot() +
+  geom_density(aes(x = usg_pct, fill = factor(first_round)),
+               alpha = 0.3) +
+   labs(x = "Usage Percentage", y = "", title="Usage Percentage Colored by First Round") + 
+   scale_fill_discrete("First Round")
+```
+The above graph shows the density of the average usage percentage for each player in our data set for their age 27 season. The points are colored red if they were not drafted in the first round and blue if they were drafted in the first round. This is fairly normally distributed.
+
+```{r}
+#Let's plot both balance and income simultaneously
+draft.data %>%
+  ggplot() +
+  geom_point(aes(x = pts, y = usg_pct, color = factor(first_round))) +
+   labs(x = "Points", y = "Usage Percentage", title="Actual Usage Percentage v Points") + 
+   scale_color_discrete("First Round")
+```
+The above graph shows us the average points vs average usage percentage for each player, colored by if they were first round or not. There seems to be a positive correlation between usage percentage and points scored. 
+
+```{r}
+
+#Let's make classifications based on a threshold of X
+#(Let's start predicting "Default" if P(draft.data | pts and usg_pct)) >= 0.2
+predictions <- predict(lda.firstRound, draft.data)
+
+X <- .4
+
+draft.data.new <- draft.data %>%
+  mutate(preds = case_when(predictions$posterior[,2] >= X ~ "Yes",
+                           TRUE ~ "No"))
+
+#Let's visualize what these predictions look like
+draft.data.new %>%
+  ggplot() +
+  geom_point(aes(x = pts, y = usg_pct, color = preds)) +
+   labs(x = "Points", y = "Usage Percentage", title="Usage Percentage v Points") + 
+   scale_color_discrete("Predicted First Round")
+```
+The above graph shows us the average points vs average usage percentage for each player, colored by if they are predicted to be in the first round or not. This is at threshold 0.4 just to get an idea.
+```{r}
+#How does our accuracy metric of choice change when the threshold changes?
+#How accurate is our LDA with threshold X?
+
+#Confusion Matrix - how good model is at making predictions
+table(draft.data.new$first_round, draft.data.new$preds)
+
+```
+We calculate accuracy, sensitivity, specificity, FDR and FOR. Our possible thresholds must go from 0.15 to 0.69 because thresholds outside that range result in NA values for our metrics. This is due to the fact that a threshold that is too low won't predict any positive cases and a threshold that is too high won't predict any negative cases. Thus, metrics which have something like "Number of true positives" in the denominator will now be NA, since you'd be trying to divide by 0.
+
+```{r}
+# find best accuracy (X)
+accuracies <- c()
+FDRs <- c()
+sensitivities <- c()
+specificities <- c()
+FORs <- c()
+possible.threshold <- seq(from = 0.15,
+                        to = 0.69,
+                        by = 0.01)
+# possible.threshold <- seq(from = 0,
+#                           to = 1,
+#                           by = 0.01)
+
+for(threshold in possible.threshold){
+   
+   X <- threshold
+   
+   draft.data.new <- draft.data %>%
+     mutate(preds = case_when(predictions$posterior[,2] >= X ~ "Yes",
+                              TRUE ~ "No"))
+   
+   #Let's visualize what these predictions look like
+   # draft.data.new %>%
+   #   ggplot() +
+   #   geom_point(aes(x = pts, y = usg_pct, color = preds))
+   
+   #Confusion Matrix
+   confusionMatrix <- table(draft.data.new$first_round, draft.data.new$preds)
+   
+   #print(confusionMatrix[1]+confusionMatrix[4])
+   #print(sum(confusionMatrix))
+   
+   # REMEMBER TO TAKE THIS OUT IF SWITCH POSSIBLE THRESHOLDS
+   #accuracies <- na.omit(accuracies)
+   
+   accuracies <- c(accuracies,(confusionMatrix[1]+confusionMatrix[4])/(sum(confusionMatrix)))
+   FDRs <- c(FDRs,confusionMatrix[3]/(confusionMatrix[3]+confusionMatrix[4]))
+   sensitivities <- c(sensitivities, confusionMatrix[4]/(confusionMatrix[4]+confusionMatrix[2]))
+   specificities <- c(specificities, confusionMatrix[1]/(confusionMatrix[1]+confusionMatrix[3]))
+   FORs <- c(FORs, confusionMatrix[2]/(confusionMatrix[2]+confusionMatrix[1]))
+}
+
+# find highest accuracy
+print("Accuracy: ")
+print(max(accuracies))
+max.index <- which.max(accuracies)
+# Claims that threshold of .44 leads to highest accuracy - DOUBLE CHECK
+print(possible.threshold[max.index]) # corresponding threshold 
+
+print("Sensitivity: ")
+print(max(sensitivities))
+max.sensitivity.index <- which.max(FDRs)
+print(possible.threshold[max.sensitivity.index])
+
+print("Specificities: ")
+print(min(specificities))
+min.specificities.index <- which.min(specificities)
+print(possible.threshold[min.specificities.index])
+
+print("FDR: ")
+print(min(FDRs))
+min.fdr.index <- which.min(FDRs)
+print(possible.threshold[min.fdr.index])
+
+print("FOR: ")
+print(min(FORs))
+min.for.index <- which.min(FORs)
+print(possible.threshold[min.for.index])
+```
+Above are the metrics at the best possible threshold for that metric. Below it that corresponding threshold is printed. We will now create a graph of all the metrics at several thresholds so we can pick one overall threshold that is best for our data. 
+```{r}
+all.data <- data.frame("Accuracy" = accuracies, "Sensitivity" = sensitivities, "Specificity" = specificities, "FDR" = FDRs, "FOR" = FORs, "Threshold" = possible.threshold)
+
+all.data %>%
+   ggplot() +
+   geom_point(aes(x = Threshold, y = Accuracy, color = "Accuracy")) +
+   geom_point(aes(x = Threshold, y = Sensitivity, color = "Sensitivity")) +
+   geom_point(aes(x = Threshold, y = Specificity, color = "Specificity")) +
+   geom_point(aes(x = Threshold, y = FDR, color = "FDR")) +
+   geom_point(aes(x = Threshold, y = FOR, color = "FOR")) +
+   labs(x = "Threshold", y = "Metric", title="Metric Values at Several Threholds") 
+   
+
+```
+
+
+How the metrics correspond to our data:
+Accuracy: those we correctly predicted / everyone
+Sensitivity: those we predicted are in first round and are in first round / everyone actually in first round
+Specificity: those we predicted are not in first round and are in first round / everyone actually in first round
+FDR: those we predicted are in the first round but are not in first round / everyone we predicted were in first round  
+FOR: those we predicted are not in the first round but are  in first round / everyone we predicted were not in first round  
+
+Based off the above graph, we choose our threshold to be 0.28, where all the metrics seem to intersect besides FDR. While FDR doesn't intersect, it is still low at a 0.28 threshold which is desirable. At 0.28 threshold, accuracy and sensitivity are high (desirable) and decreasing after 0.28. Thus at a threshold higher than 0.28, accuracy and sensitivity would be worse. At 0.28 threshold, specificity and FOR are low (desirable) and increasing after 0.28. Thus at a threshold higher than 0.28, specificity and FOR would be better. Taking into account all of our metrics, 0.28 is the best threshold for our data. The threshold of 0.28 is not the best for any of the metrics, but a good compromise. Accuracy and Sensitivity are high like we want. Specificity and FOR are higher than we would like. FDR is low like we want. 
+
+We identified sensitivity and FDR as the two most important metrics to us. Sensitivity will tell us how accurately our model is able to predict first round picks out of all the actual first round picks, which directly answers the question that we initially set out to answer. FDR is compelling because it is the only metric that doesn't intersect with the other metrics at a threshold of .28. This means that FDR gives us information that is not represented by our four other metrics. FDR is an important metric because it tells us when our model incorrectly predicts a player is in the first round out of all the players we predicted were in the first round. In a real-world scenario, the FDR metric could be used to invite players to draft night. Incorrectly predicting first round picks gives prospects false expectations on when they will be drafted and puts them in an embarrassing position where they sit through an entire TV event without getting drafted, while others around them get chosen. Although our FDR metric is valuable in this sense, sensitivity is 5x more important than FDR because it directly answers our initial question of predicting if a player was drafted in the first round or not. Sensitivity can be used to inform GMs on what prospect to choose, which has major implications on a multi-billion dollar business, while FDR is best implemented to save the feelings of draft prospects.
+
+```{r}
+sensitivities <- c()
+FDRs <- c()
+possible.threshold <- seq(from = 0.15,
+                        to = 0.69,
+                        by = 0.01)
+# possible.threshold <- seq(from = 0,
+#                           to = 1,
+#                           by = 0.01)
+
+for(threshold in possible.threshold){
+   
+   X <- threshold
+   
+   draft.data.new <- draft.data %>%
+     mutate(preds = case_when(predictions$posterior[,2] >= X ~ "Yes",
+                              TRUE ~ "No"))
+   
+   #Let's visualize what these predictions look like
+   draft.data.new %>%
+     ggplot() +
+     geom_point(aes(x = pts, y = usg_pct, color = preds))
+   
+   #Confusion Matrix
+   confusionMatrix <- table(draft.data.new$first_round, draft.data.new$preds)
+   
+   #print(confusionMatrix[1]+confusionMatrix[4])
+   #print(sum(confusionMatrix))
+   
+   # REMEMBER TO TAKE THIS OUT IF SWITCH POSSIBLE THRESHOLDS
+   #accuracies <- na.omit(accuracies)
+   
+   FDRs <- c(FDRs,confusionMatrix[3]/(confusionMatrix[3]+confusionMatrix[4]))
+   sensitivities <- c(sensitivities, confusionMatrix[4]/(confusionMatrix[4]+confusionMatrix[2]))
+}
+
+FDR.data <- data.frame(FDR = FDRs, Threshold = possible.threshold)
+sensitivity.data <- data.frame(Sensitivity = sensitivities, Threshold = possible.threshold)
+
+FDR.data %>%
+   ggplot() +
+   geom_point(aes(x = Threshold, y = FDR))
+
+sensitivity.data %>%
+   ggplot() +
+   geom_point(aes(x = Threshold, y = Sensitivity))
+
+```
+
+For our sensitivity plot, we see a strong negative correlation between sensitivity and threshold. We have a nearly perfect sensitivity of .992 for threshold .15, and sensitivity gradually decreases as threshold increases with a minimum sensitivity of .022 at our rightmost threshold of .69.
+
+For our FDR plot, there is a linear, negative correlation between FDR and threshold from threshold .15-.53. FDR then climbs slowly from threshold .54-.6. Finally, we see a large negative jump discontinuity in FDR from .13 down to .08 when we go from sensitivity .6 to .61 and a positive correlation from .61-.69.
+
+We wanted sensitivity to be as high as possible and, as shown by our graph, the highest sensitivity was at a threshold of 0.15. We wanted FDR to be the lowest possible and our graph indicated that the lowest FDR value was at a threshold of 0.61. Our question asked was: how can we predict if players were drafted in the first round? We decided that it was most important to have as many true positive’s (correctly predicted first-rounders) as possible, and thus sensitivity was much more important to us than FDR (since sensitivity has to do with those we predicted first round correctly versus FDR having to do with those we predicted were first round incorrectly). We chose the threshold 0.2 when analyzing these two critical metrics because we value sensitivity 5x more than FDR, and a lower threshold improves sensitivity. The threshold 0.2 corresponds to a sensitivity of 0.885 and an FDR of 0.262.
+
+
+Our model was successful in predicting if players were drafted in the first round based on their points per game (pts) and usage rates (usg_pct) at age 27 (the average prime for an NBA player). We considered it successful because we valued the sensitivity metric the most and our highest sensitivity was 0.992 (very good).  Admittedly, our model by itself is not too useful. Looking back, we should have used stats from each players’ last season before entering the draft. This could have proved more useful/practical because it would (hopefully) highlight the statistics that NBA scouts used historically to evaluate their draft prospects.
+
+
+
+

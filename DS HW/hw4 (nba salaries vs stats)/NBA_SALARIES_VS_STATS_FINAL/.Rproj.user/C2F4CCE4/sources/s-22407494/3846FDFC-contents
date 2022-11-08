@@ -1,0 +1,299 @@
+---
+title: "Final Project (Before)"
+author: "Lucas Shin, Cody Kim, Kaela Finegan"
+date: "11/21/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Every year, NBA 2k (the video game) player ratings are announced prior to the start of the NBA season. Some players are happy with
+their ratings and some do not feel that their ratings accurately represent their skills on the court. Since NBA 2K generates the
+player ratings before the start of each season, we will use each player's previous season's stats to predict their rating in the
+video game (for example, NBA 2K21 ratings are joined with player stats from the NBA 2019-20 season). We assume that there is some
+level of subjectivity in the player ratings (based on each player's popularity and overall media attention), so our aim is to 
+construct the best model possible to make predictions based on not only their individual on court stats (e.g. points, 3-point-makes,
+steals) but also their less objective metrics such as age, win.percentage, and triple doubles.
+
+```{r}
+nba.data <- read_csv("nba_rankings_2014-2020.csv") %>% 
+   select(-X1, -TEAM, -OREB, -DREB, -FP, -PF, -L, -DD2, -TD3) %>% 
+   mutate(win.percentage = W/GP) %>% 
+   select(-W)
+
+colnames(nba.data)[22] <- "rating"
+
+nba.data.before.with.names <- nba.data %>% 
+   filter(SEASON == "2017-18") %>% 
+   select(-SEASON)
+
+nba.data.before <- nba.data %>% 
+   filter(SEASON == "2017-18") %>% 
+   select(-SEASON, -PLAYER)
+
+nba.data.after <- nba.data %>% 
+   filter(SEASON == "2019-20") %>% 
+   select(-SEASON, -PLAYER)
+
+# rename columns
+colnames(nba.data.before)[7] <- 'FG.percent'
+colnames(nba.data.before)[8] <- 'Threes.Made'
+colnames(nba.data.before)[9] <- 'Threes.Attempted'
+colnames(nba.data.before)[10] <- 'Threes.percent'
+colnames(nba.data.before)[13] <- 'FT.percent'
+colnames(nba.data.before)[19] <- 'Plus.Minus'
+```
+
+We will split our data set into a "before" and "after" to serve as a training and testing set, respectively. As shown above, we will
+train using statistics from the 2017-2018 season and test with data from the 2019-2020 season.
+
+Our response variable will be the NBA 2k rating (which we named "rating"), which ranges from 65 to 90.
+
+Let's take a look at our data!
+
+```{r}
+print(colMeans(nba.data.before))
+```
+
+Above are the average values for each of our statistics to give an overview of typical values found in each column.
+
+```{r}
+nba.data.before %>% 
+   ggplot(aes(x = win.percentage,
+             y = rating)) +
+   geom_point()
+```
+
+The above graph shows that win.percentage has a low positive correlation with 2k rating. This makes sense because players can be on 
+winning teams without contributing much statistically (ex: Zhou Qi was on the 65-17 Houston Rockets team, but he only averaged 6.9
+minutes a game and contributed minimal stats in those minutes). 
+
+```{r}
+nba.data.before %>% 
+   ggplot(aes(x = `Plus.Minus`,
+             y = rating)) +
+   geom_point()
+```
+
+The above graph shows that +/- has a low to moderate positive correlation with 2k rating. Some players with positive impacts on the
+court did not have higher ratings. An example of this would be Luc Mbah a Moute of the Houston Rockets, who did not contribute much statistically (which could explain his average rating of 75) but had a higher +/- than most. 
+
+```{r}
+nba.data.before %>% 
+   ggplot(aes(x = PTS,
+             y = rating)) +
+   geom_point()
+```
+
+The above graph shows a strong positive correlation between points per game and rating. This makes sense because, generally, a player
+who scores more is a more skilled player. 
+
+From these exploratory graphs, it seems that the most individual statistics (e.g. points) most directly lead to higher ratings, and less individual statistics (e.g. win percentage and +/-) have lower correlations with player rating.
+
+
+Now we will use a knn-regression model to try to predict ratings based on our players' statistics. We considered using an LDA model,
+but the LDA model works best for predicting categorical variables, not for continuous variables like rating (which we are
+predicting). We will use the same metrics as before, and begin by normalizing all variables that do not only have values between 0
+and 1 (which will put each variable on the same scale). We will do this using the equation: 
+
+                        scaled.column <- (x - min(x's column))/(max(x's column)-min(x's column))
+                        
+This equation was taken from "https://towardsdatascience.com/k-nearest-neighbors-algorithm-with-examples-in-r-simply-explained-knn-1f2c88da405c". The normalization code in the next chunk was also taken from this website.
+
+```{r}
+# create a normalization function
+normalize <-function(x) { 
+  (x-min(x))/(max(x)-min(x))   
+}
+
+# Run normalization all columns so that 'age', 'avg_glucose_level', and 'bmi' are normalized 
+normalized.nba.data.before <- as.data.frame(lapply(nba.data.before[,c(1:21)], normalize))
+
+```
+
+```{r}
+
+# Make a vector to capture predictions for each k
+pred.vector <- NULL
+error.vector <- NULL
+
+for(k in 1:50){
+  for(row in 1:nrow(normalized.nba.data.before)){
+    
+    # Create test data
+    test.data <- normalized.nba.data.before[row, ] %>%
+      dplyr::select(-rating)
+    
+    # Create training data
+    training.data <- normalized.nba.data.before[-row, ] 
+    
+    training.data.no.rating <- training.data %>%
+      dplyr::select(-rating)
+    
+    # Regression
+    model1.reg <- knn.reg(train = training.data.no.rating,
+                          test = test.data,
+                          k = k,
+                          y = training.data$rating)
+    
+    pred.vector[row] <- model1.reg$pred - (normalized.nba.data.before[row, ] %>% pull(rating))
+
+  }
+  # Average error for a given value of k (across all data values), mean^2
+  error.vector[k] <- mean(pred.vector^2)
+  print(k)
+}
+```
+
+We chose to use a regression model because the variable we are trying to predict, rating, is a quantitative variable, not a
+categorical one. Also, we chose to use mean squared error here to maximize the error values (so that small error values were more
+easily represented, identified, and accounted for).
+
+```{r}
+# Check the error at each k
+pred.data <- data.frame(error.vector,
+                        k = 1:50)
+
+pred.data %>%
+  ggplot(aes(x = k,
+             y = error.vector)) +
+  geom_point()
+
+# find the minimum error value from the error.vector previously calculated
+min.error <- min(error.vector)
+# find the optimal k that is associated with the min.error
+optimal.k <- match(min.error, error.vector)
+
+print(paste0("Minimum Error: ", min.error))
+print(paste0("Optimal k Value: ", optimal.k))
+```
+
+Printed above are the optimal k value (k = 11) along with its error value at that k (~.0.00701). Now we will use this optimal k to
+visualize the success of the model plotted against PTS and Plus.Minus. This 2D graph will use the fixed medians of all of the other
+variables and vary PTS and Plus.Minus. I chose to vary PTS because, as stated previously, players who score more points are usually
+more talented players. I chose to vary Plus.Minus because it is a statistic that can be applied to all players while some statistics
+favor certain positions (rebounds favor forwards and centers, assists favor point guards).
+
+```{r}
+ggplot(mapping = aes(x = PTS, y = Plus.Minus)) + 
+        geom_point(size = .4, data = normalized.nba.data.before, aes(color = rating))
+
+#Let's make a grid of all possible combinations of avg_glucose_level and bmi
+grid <- expand.grid(PTS = seq(from = 0, to = 1, by = .01),
+                    Plus.Minus = seq(from = 0, to = 1, by = .01))
+
+grid <- grid %>%
+  group_by(PTS, Plus.Minus)
+
+medians <- normalized.nba.data.before %>%
+  select(-rating, -PTS, -Plus.Minus) %>%
+  summarize_all(median)
+
+prediction = knn.reg(train = normalized.nba.data.before %>% select(-rating), 
+                     test = grid %>% mutate(medians),
+                     k = 11,
+                     y = normalized.nba.data.before)
+
+grid <- grid %>%
+  cbind(prediction$pred) 
+
+colnames(grid) <- c("PTS", "Plus.Minus", "prediction")
+
+grid %>%
+  ggplot() +
+  geom_point(size = 5, mapping = aes(x = PTS, y = Plus.Minus, color = prediction)) +
+  theme_bw()
+```
+
+As shown above, when PTS and Plus.Minus are high, the NBA 2k ratings are high, which is what one would expect. In general, when PTS
+increase, the chance for a higher rating increases (no matter what the Plus.Minus). The same goes for increasing the Plus.Minus,
+but on a much smaller extent. Looking at the graph, it looks like PTS raises the chance of a higher rating more than an increase in
+Plus.Minus does. This is what we would expect, as we explained earlier in the exploratory graph where we plotted rating against
+Plus.Minus.
+
+^^ check with Lyf
+
+
+
+We will now construct a random forest model using the same data set (nba.data.before). Random forests can be used to predict continuous variables (e.g. player rating) and perform best when supplied with a large number of unique metrics that it can make splits on. A random forest will split our variables and display what combinations of age, games played (GP), minutes per game (MIN), points per game (PTS), field goals made per game (FGM),field goals attempted per game (FGA), 3 pointers made per game (Three.Made), 3 pointers attempted per game (Threes.Attempted), three point percentage (Threes.percent), free-throws made per game (FTM), free-throws attempted per game (FTA), free-throw percentage (FT.percent), rebounds per game (REB), assists per game (AST), turnovers per game (TOV), steals per game (STL), blocks per game (BLK), overall plus-minus (Plus.Minus), and win percentage lead to higher NBA 2k player ratings.
+
+```{r}
+library(caret)
+library(rpart)
+library(ipred)
+library(randomForest)
+#library(NLP)
+#library(stringr)
+#library(rattle)
+#library(ranger)
+```
+
+```{r}
+
+```
+
+
+```{r}
+set.seed(1)
+
+# print this out and see that kappa is 0 - only predicting no oscar - same as random chance.
+# we need to figure out how to make it start making positive predictions too
+# maybe each individual tree cuts off too soon
+# use ranger package instead randomForest. train calls other functions, adjust threshold for predicted probabilities
+
+# train is from caret
+rf.caret.1 <- train(rating~ ., 
+                    data = nba.data.before,
+                    method = "rf",
+                    tuneGrid = data.frame(mtry = c(1, 2, 3)))
+# RandomForest
+rf2 <- randomForest(rating~ ., 
+                    data = nba.data.before)
+```
+
+
+```{r}
+predictions <- predict(rf.caret.1, nba.data.before)
+
+sensitivities <- c()
+specificities <- c()
+ourMetric <- c()
+possible.threshold <- seq(from = 0.05,
+                        to = 0.2,
+                        by = 0.01)
+
+for(threshold in possible.threshold){
+   
+   X <- threshold
+   
+   nba.data.before.new <- nba.data.before %>%
+     mutate(preds = case_when(predictions$predictions[,2] >= X ~ "Yes",
+                              TRUE ~ "No"))
+   
+   #Confusion Matrix
+   confusionMatrix <- table(nba.data.before.new$`rating`, nba.data.before.new$preds)
+
+   #
+   sensitivities <- c(sensitivities, confusionMatrix[4]/(confusionMatrix[4]+confusionMatrix[2]))
+   specificities <- c(specificities, confusionMatrix[1]/(confusionMatrix[1]+confusionMatrix[3]))
+   
+   #ourMetric <- c(ourMetric, 2*(confusionMatrix[4]/(confusionMatrix[4]+confusionMatrix[2]))+confusionMatrix[1]/(confusionMatrix[1]+confusionMatrix[3]))
+}
+
+
+print("Sensitivity: ")
+print(sensitivities)
+
+print("Specificities: ")
+print(specificities)
+
+print("ourMetric: ")
+print(ourMetric)
+
+#print(max(ourMetric, na.rm = TRUE))
+#max.ourMetric <- which(ourMetric == max(ourMetric, na.rm = TRUE))
+#print(possible.threshold[max.ourMetric])
+```
+

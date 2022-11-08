@@ -1,0 +1,77 @@
+---
+title: "lshin_hw3"
+author: "Lucas Shin"
+date: "11/5/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library("png")
+```
+
+Step 1
+```{r}
+faces <- matrix(nrow = 3600, 
+                ncol = 0)
+
+imageList <- list.files("/Users/lucasshin/Desktop/Biometrics/Biometrics HW 3/testingfaces2/")
+
+for (i in 1:length(imageList)) {
+   photo = imageList[i]
+   image = readPNG(paste("/Users/lucasshin/Desktop/Biometrics/Biometrics HW 3/testingfaces2/",
+                         photo, sep = ""))
+   vecImage = as.vector(image)
+   faces <- cbind(faces, vecImage)
+}
+
+rowMeans <- rowMeans(faces)
+
+subjMeans <- matrix(nrow = 3600, ncol = 0)
+for (j in 1:26) {
+   imagePerSubject <- matrix(nrow = 3600, ncol = 0)
+   for (k in 1:length(imageList)) {
+      if (as.numeric(substr(c(imageList[k]), start = 2, stop = 3)) == j) {
+         imagePerSubject = cbind(imagePerSubject, faces[ , k])
+      }
+   }
+   subjMeans = cbind(subjMeans, rowMeans(imagePerSubject))
+}
+
+colnames(subjMeans) <- c(1:26) # renames columns
+
+subjMeans<-subjMeans[,-c(14,21)] # deletes columns 14 and 21, which are NA (since there are no subjects 14 and 21 in the set)
+
+subjects <- colnames(subjMeans)
+subjects <- as.numeric(subjects)
+```
+
+
+Step 2 (SB and SW are below)
+```{r}
+sw <- matrix(0L, nrow=3600, ncol=3600)
+for (m in 1:length(subjects)) {
+   subNum = subjects[m]
+   for (n in 1:length(imageList)) {
+      if (as.numeric(substr(c(imageList[n]), start = 2, stop = 3)) == subNum) {
+         var <- faces[,n] - subjMeans[subNum]
+         sw <- sw+(var%*%t(var))
+      }
+   }
+}
+
+sb <- matrix(0L, nrow=3600, ncol=3600)
+for (p in 1:length(subjects)) {
+   sNum = subjects[p]
+   for (q in 1:length(imageList)) {
+      nphotos <- 0
+      if (as.numeric(substr(c(imageList[q]), start = 2, stop = 3)) == sNum) {
+         nphotos = nphotos+1
+      }
+   }
+   variable <- subjMeans[sNum] - rowMeans
+   sb <- sb + nphotos*(variable%*%t(variable))
+}
+```
+

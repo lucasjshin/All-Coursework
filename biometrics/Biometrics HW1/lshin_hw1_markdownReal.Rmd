@@ -1,0 +1,131 @@
+---
+title: "lshin_hw1_markdown"
+author: "Lucas Shin"
+date: "10/1/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+```
+
+# 1
+```{r}
+RealScoreMatrix <- read_csv("BSS1_DissimilarityScoreMatrix_GEI.csv", col_names = FALSE)
+RealGalleryList <- read_csv("BSS1_GalleryIDList.csv", col_names = FALSE)
+RealQueryList <- read_csv("BSS1_QueryIDList.csv", col_names = FALSE)
+
+impScores <- c() # creates array for imposter scores
+genScores <- c() # creates array for genuine scores
+
+# iterates through 2D matrix, checks if score is imposter or genuine, and adds to respective array
+for(j in 1:300) { # 1:300 to truncate from the set of queries
+   for(i in 1:nrow(RealGalleryList)) { 
+      if(RealGalleryList[i,1]==RealQueryList[j,1]) {
+         genScores <- c(genScores, RealScoreMatrix[j,i])
+      } else {
+         impScores <- c(impScores, RealScoreMatrix[j,i])
+      }
+   }
+}
+
+impFrame <- data.frame(impScores) # create data frame for imposter scores
+impFrameNew <- as.data.frame(t(impFrame)) # transforms data into entries of column instead of entries of row
+
+genFrame <- data.frame(genScores) # create data frame for genuine scores
+genFrameNew <- as.data.frame(t(genFrame)) # transforms data into entries of column instead of entries of row
+
+# plots the distance scores in a density graph
+ggplot(mapping = aes(x = V1)) +
+   geom_density(data = impFrameNew,
+                color = "red",
+                fill = "red",
+                alpha = 0.3) +
+   geom_density(data = genFrameNew,
+                color = "green",
+                fill = "green",
+                alpha = 0.3) +
+   labs(title = "Distribution of Genuine and Imposter Scores",
+        x = "Distance Scores", 
+        y = "Density")
+```
+
+As shown above in my R code, I had to truncate the length of the query list (due to time constraints) to 300. The Graph shows the distribution of distance scores only including the first 300 query entries. The green colored curve shows the genuine distance scores, while the red colored curve shows the imposter distance scores.
+
+# 2
+```{r}
+impMean <- mean(impFrameNew$V1) # mean of imposter score distribution
+genMean <- mean(genFrameNew$V1) # mean of genuine score distribution
+impStandDev <- sd(impFrameNew$V1) # standard deviation of imposter score distribution
+genStandDev <- sd(genFrameNew$V1) # standard deviation of genuine score distribution
+
+dPrime <- ((sqrt(2))*abs(genMean-impMean))/sqrt((genStandDev*genStandDev)+(impStandDev*impStandDev)) 
+print(dPrime)
+```
+
+The sensitivity value for the data set (or the d' value), as shown above, is                    . I calculated this using the equation (1.10) provided in the textbook. 
+
+# 3
+```{r}
+thresholdList <- c()
+maxGenScore <- max(genFrameNew)
+maxImpScore <- max(impFrameNew)
+maxScore <- c(maxImpScore,maxGenScore)
+maxThreshold <- max(maxScore)
+inc <- maxThreshold/20 # increments I will be adding to the list of thresholds
+current <- 0
+
+while(current <= maxThreshold) {
+   thresholdList <- c(thresholdList, current)
+   current = current + inc
+}
+
+# defining lists of FRR and FAR points that will be plotted
+FRRList <- c()
+FARList <- c()
+
+for(threshold in thresholdList) {
+   # for FRR
+   genReject <- c()
+   for(k in genScores) {
+      if(k > threshold) {
+         genReject <- c(genReject, k)
+      }
+   }
+   FRR <- (length(genReject) / length(genScores)) # calculating FRR score
+   FRRList <- c(FRRList, FRR)
+   
+   # for FAR
+   impAllowed <- c()
+   for(l in impScores) {
+      if(l <= threshold) {
+         impAllowed <- c(impAllowed, l)
+      }
+   }
+   FAR <- (length(impAllowed) / length(impScores)) # calculating FAR score
+   FARList <- c(FARList, FAR)
+}
+```
+
+In the code above, I take find the FAR and FRR points that will be plotted on the ROC curve.
+
+```{r}
+ROCpoints <- data.frame(FARList, FRRList)
+
+# to plot
+ROCpoints %>% 
+   ggplot(mapping = aes(x = FARList,
+                        y = FRRList)) +
+   geom_point() +
+   geom_line() +
+   theme_bw() +
+   geom_abline() +
+   labs(x = "FAR", 
+        y = "FRR")
+```
+
+Above is my ROC curve, with the FAR scores plotted on the x axis, and the FRR scores plotted on the y axis. To find the approximate value of the EER, I plotted an x=y line and found its intersection with the ROC curve. This EER value was approximately  
+

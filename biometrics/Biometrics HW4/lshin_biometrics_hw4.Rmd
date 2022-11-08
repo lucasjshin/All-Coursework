@@ -1,0 +1,413 @@
+---
+title: "lshin_biometrics_hw4"
+author: "Lucas Shin"
+date: "11/17/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ptw)
+library(ggplot2)
+library("png")
+```
+
+
+Deliverable #1 (Implementation of LBP on one image) is shown below:
+```{r}
+
+imageList <- list.files("/Users/lucasshin/Desktop/Biometrics/Biometrics HW4/trainingfaces2/")
+
+photo <- imageList[1] # select first image from training set as a test
+
+image1 = readPNG(paste("/Users/lucasshin/Desktop/Biometrics/Biometrics HW4/trainingfaces2/",
+                      photo, sep = ""))
+
+image2 <- padzeros(image1,1,side="both") # Add zeros to the left and right side of the matrix (both)
+image3 <- padzeros(t(image2),1,side="both") # Rotates the matrix and adds zeros to both sides
+padded <- t(image3) # Rotates the matrix back so that it is in the same orientation as the orig
+
+fMatrix <- matrix(0L, nrow = nrow(padded)-2, ncol = ncol(padded)-2) # create empty matrix
+
+for (i in 1:(nrow(padded)-2)) {
+   i = i + 1
+   for (j in 1:(ncol(padded)-2)) {
+      j = j + 1
+      sum = 0
+      if (padded[i-1,j-1] >= padded[i,j]) {
+         sum <- sum + 1
+      } 
+      
+      if (padded[i-1,j] >= padded[i,j]) {
+         sum <- sum + 2
+      } 
+      
+      if (padded[i-1,j+1] >= padded[i,j]) {
+         sum <- sum + 4
+      } 
+      
+      if (padded[i,j+1] >= padded[i,j]) {
+         sum <- sum + 8
+      } 
+      
+      if (padded[i+1,j+1] >= padded[i,j]) {
+         sum <- sum + 16
+      } 
+      
+      if (padded[i+1,j] >= padded[i,j]) {
+         sum <- sum + 32
+      } 
+      
+      if (padded[i+1,j-1] >= padded[i,j]) {
+         sum <- sum + 64
+      } 
+      
+      if (padded[i,j-1] >= padded[i,j]) {
+         sum <- sum + 128
+      }
+      fMatrix[i-1,j-1] <- sum
+   }
+}
+
+# declare sets of data for histograms
+set1 <- as.vector(fMatrix[1:15,1:15])
+set2 <- as.vector(fMatrix[1:15,16:30])
+set3 <- as.vector(fMatrix[1:15,31:45])
+set4 <- as.vector(fMatrix[1:15,46:60])
+set5 <- as.vector(fMatrix[16:30,1:15])
+set6 <- as.vector(fMatrix[16:30,16:30])
+set7 <- as.vector(fMatrix[16:30,31:45])
+set8 <- as.vector(fMatrix[16:30,31:45])
+set9 <- as.vector(fMatrix[16:30,46:60])
+set10 <- as.vector(fMatrix[31:45,16:30])
+set11 <- as.vector(fMatrix[31:45,31:45])
+set12 <- as.vector(fMatrix[31:45,46:60])
+set13 <- as.vector(fMatrix[46:60,1:15])
+set14 <- as.vector(fMatrix[46:60,16:30])
+set15 <- as.vector(fMatrix[46:60,31:45])
+set16 <- as.vector(fMatrix[46:60,46:60])
+
+allFvectors <- c()
+
+allSets <- list(set1, set2, set3, set4, set5, set6, set7, set8, set9, set10, set11, set12, set13, set14, set15, set16)
+
+for (k in 1:length(allSets)) {
+   relevant <- allSets[[k]]
+   bin1 <- 0
+   bin2 <- 0
+   bin3 <- 0
+   bin4 <- 0
+   bin5 <- 0
+   bin6 <- 0
+   bin7 <- 0
+   bin8 <- 0
+   for (m in 1:225) {
+      pixel <- relevant[m]
+      if ((pixel >= 0) & (pixel < 32)) {
+         bin1 <- bin1 + 1
+      }
+      if ((pixel >= 32) & (pixel < 64)) {
+         bin2 <- bin2 + 1
+      }
+      if ((pixel >= 64) & (pixel < 96)) {
+         bin3 <- bin3 + 1
+      }
+      if ((pixel >= 96) & (pixel < 128)) {
+         bin4 <- bin4 + 1
+      }
+      if ((pixel >= 128) & (pixel < 160)) {
+         bin5 <- bin5 + 1
+      }
+      if ((pixel >= 160) & (pixel < 192)) {
+         bin6 <- bin6 + 1
+      }
+      if ((pixel >= 192) & (pixel < 224)) {
+         bin7 <- bin7 + 1
+      }
+      if ((pixel >= 224) & (pixel < 256)) {
+         bin8 <- bin8 + 1
+      }
+   }
+   fVector <- c(bin1, bin2, bin3, bin4, bin5, 
+                        bin6, bin7, bin8)
+   allFvectors <- c(allFvectors, fVector)
+}
+```
+
+
+Deliverable #2 (Testing) is shown below:
+```{r}
+# load in 3 genuine and 3 imposter pairs
+gen1a <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW4/testingfaces2/s26d10.png"
+gen1b <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW4/testingfaces2/s26d7.png"
+genPair1 <- c(gen1a, gen1b)
+
+gen2a <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW4/testingfaces2/s24d9.png"
+gen2b <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW4/testingfaces2/s24d1.png"
+genPair2 <- c(gen2a, gen2b)
+
+gen3a <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW4/testingfaces2/s17d2.png"
+gen3b <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW4/testingfaces2/s17d8.png"
+genPair3 <- c(gen3a, gen3b)
+
+imp1a <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW4/testingfaces2/s13d9.png"
+imp1b <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW4/testingfaces2/s12d10.png"
+impPair1 <- c(imp1a, imp1b)
+
+imp2a <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW4/testingfaces2/s05d3.png"
+imp2b <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW4/testingfaces2/s02d4.png"
+impPair2 <- c(imp2a, imp2b)
+
+imp3a <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW4/testingfaces2/s25d1.png"
+imp3b <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW4/testingfaces2/s13d7.png"
+impPair3 <- c(imp3a, imp3b)
+
+testImages <- c(gen1a, gen1b, gen2a, gen2b, gen3a, gen3b, imp1a, imp1b, imp2a, imp2b, imp3a, imp3b)
+testPairs <- list(genPair1, genPair2, genPair3, impPair1, impPair2, impPair3)
+distanceScores <- list()
+
+for (g in 1:length(testPairs)) {
+
+   image1 = readPNG(testPairs[[g]][1])
+   image2 = readPNG(testPairs[[g]][2])
+   
+   vec11 <- padzeros(image1,1,side="both") # Add zeros to the left and right side of the matrix (both)
+   vec12 <- padzeros(t(vec11),1,side="both") # Rotates the matrix and adds zeros to both sides
+   
+   vec21 <- padzeros(image2,1,side="both") # Add zeros to the left and right side of the matrix (both)
+   vec22 <- padzeros(t(vec21),1,side="both") # Rotates the matrix and adds zeros to both sides
+   
+   padded1 <- t(vec12) # Rotates the matrix back so that it is in the same orientation as the orig
+   
+   padded2 <- t(vec22) # Rotates the matrix back so that it is in the same orientation as the orig
+   
+   fMatrix1 <- matrix(0L, nrow = nrow(padded1)-2, ncol = ncol(padded1)-2) # create empty matrix
+   fMatrix2 <- matrix(0L, nrow = nrow(padded2)-2, ncol = ncol(padded2)-2) # create empty matrix
+   
+   for (i in 1:(nrow(padded1)-2)) {
+      i = i + 1
+      for (j in 1:(ncol(padded1)-2)) {
+         j = j + 1
+         sum = 0
+         if (padded1[i-1,j-1] >= padded1[i,j]) {
+            sum <- sum + 1
+         } 
+         
+         if (padded1[i-1,j] >= padded1[i,j]) {
+            sum <- sum + 2
+         } 
+         
+         if (padded1[i-1,j+1] >= padded1[i,j]) {
+            sum <- sum + 4
+         } 
+         
+         if (padded1[i,j+1] >= padded1[i,j]) {
+            sum <- sum + 8
+         } 
+         
+         if (padded1[i+1,j+1] >= padded1[i,j]) {
+            sum <- sum + 16
+         } 
+         
+         if (padded1[i+1,j] >= padded1[i,j]) {
+            sum <- sum + 32
+         } 
+         
+         if (padded1[i+1,j-1] >= padded1[i,j]) {
+            sum <- sum + 64
+         } 
+         
+         if (padded1[i,j-1] >= padded1[i,j]) {
+            sum <- sum + 128
+         }
+         fMatrix1[i-1,j-1] <- sum
+      }
+   }
+   
+   # declare sets of data for histograms
+   set11 <- as.vector(fMatrix1[1:15,1:15])
+   set12 <- as.vector(fMatrix1[1:15,16:30])
+   set13 <- as.vector(fMatrix1[1:15,31:45])
+   set14 <- as.vector(fMatrix1[1:15,46:60])
+   set15 <- as.vector(fMatrix1[16:30,1:15])
+   set16 <- as.vector(fMatrix1[16:30,16:30])
+   set17 <- as.vector(fMatrix1[16:30,31:45])
+   set18 <- as.vector(fMatrix1[16:30,31:45])
+   set19 <- as.vector(fMatrix1[16:30,46:60])
+   set110 <- as.vector(fMatrix1[31:45,16:30])
+   set111 <- as.vector(fMatrix1[31:45,31:45])
+   set112 <- as.vector(fMatrix1[31:45,46:60])
+   set113 <- as.vector(fMatrix1[46:60,1:15])
+   set114 <- as.vector(fMatrix1[46:60,16:30])
+   set115 <- as.vector(fMatrix1[46:60,31:45])
+   set116 <- as.vector(fMatrix1[46:60,46:60])
+   
+   allFvectors1 <- c()
+   
+   allSets1 <- list(set11, set12, set13, set14, set15, set16, set17, set18, set19, set110, set111, set112, set113, set114, set115, set116)
+   
+   for (k in 1:length(allSets1)) {
+      relevant <- allSets1[[k]]
+      bin11 <- 0
+      bin12 <- 0
+      bin13 <- 0
+      bin14 <- 0
+      bin15 <- 0
+      bin16 <- 0
+      bin17 <- 0
+      bin18 <- 0
+      for (m in 1:225) {
+         pixel <- relevant[m]
+         if ((pixel >= 0) & (pixel < 32)) {
+            bin11 <- bin11 + 1
+         }
+         if ((pixel >= 32) & (pixel < 64)) {
+            bin12 <- bin12 + 1
+         }
+         if ((pixel >= 64) & (pixel < 96)) {
+            bin13 <- bin13 + 1
+         }
+         if ((pixel >= 96) & (pixel < 128)) {
+            bin14 <- bin14 + 1
+         }
+         if ((pixel >= 128) & (pixel < 160)) {
+            bin15 <- bin15 + 1
+         }
+         if ((pixel >= 160) & (pixel < 192)) {
+            bin16 <- bin16 + 1
+         }
+         if ((pixel >= 192) & (pixel < 224)) {
+            bin17 <- bin17 + 1
+         }
+         if ((pixel >= 224) & (pixel < 256)) {
+            bin18 <- bin18 + 1
+         }
+      }
+      fVector1 <- c(bin11, bin12, bin13, bin14, bin15, 
+                           bin16, bin17, bin18)
+      allFvectors1 <- c(allFvectors1, fVector1)
+   }
+   
+   for (i in 1:(nrow(padded2)-2)) {
+      i = i + 1
+      for (j in 1:(ncol(padded2)-2)) {
+         j = j + 1
+         sum = 0
+         if (padded2[i-1,j-1] >= padded2[i,j]) {
+            sum <- sum + 1
+         } 
+         
+         if (padded2[i-1,j] >= padded2[i,j]) {
+            sum <- sum + 2
+         } 
+         
+         if (padded2[i-1,j+1] >= padded2[i,j]) {
+            sum <- sum + 4
+         } 
+         
+         if (padded2[i,j+1] >= padded2[i,j]) {
+            sum <- sum + 8
+         } 
+         
+         if (padded2[i+1,j+1] >= padded2[i,j]) {
+            sum <- sum + 16
+         } 
+         
+         if (padded2[i+1,j] >= padded2[i,j]) {
+            sum <- sum + 32
+         } 
+         
+         if (padded2[i+1,j-1] >= padded2[i,j]) {
+            sum <- sum + 64
+         } 
+         
+         if (padded2[i,j-1] >= padded2[i,j]) {
+            sum <- sum + 128
+         }
+         fMatrix2[i-1,j-1] <- sum
+      }
+   }
+   
+   # declare sets of data for histograms
+   set21 <- as.vector(fMatrix2[1:15,1:15])
+   set22 <- as.vector(fMatrix2[1:15,16:30])
+   set23 <- as.vector(fMatrix2[1:15,31:45])
+   set24 <- as.vector(fMatrix2[1:15,46:60])
+   set25 <- as.vector(fMatrix2[16:30,1:15])
+   set26 <- as.vector(fMatrix2[16:30,16:30])
+   set27 <- as.vector(fMatrix2[16:30,31:45])
+   set28 <- as.vector(fMatrix2[16:30,31:45])
+   set29 <- as.vector(fMatrix2[16:30,46:60])
+   set210 <- as.vector(fMatrix2[31:45,16:30])
+   set211 <- as.vector(fMatrix2[31:45,31:45])
+   set212 <- as.vector(fMatrix2[31:45,46:60])
+   set213 <- as.vector(fMatrix2[46:60,1:15])
+   set214 <- as.vector(fMatrix2[46:60,16:30])
+   set215 <- as.vector(fMatrix2[46:60,31:45])
+   set216 <- as.vector(fMatrix2[46:60,46:60])
+   
+   allFvectors2 <- c()
+   
+   allSets2 <- list(set21, set22, set23, set24, set25, set26, set27, set28, set29, set210, set211, set212, set213, set214, set215, set216)
+   
+   for (k in 1:length(allSets2)) {
+      relevant <- allSets2[[k]]
+      bin21 <- 0
+      bin22 <- 0
+      bin23 <- 0
+      bin24 <- 0
+      bin25 <- 0
+      bin26 <- 0
+      bin27 <- 0
+      bin28 <- 0
+      for (m in 1:225) {
+         pixel <- relevant[m]
+         if ((pixel >= 0) & (pixel < 32)) {
+            bin21 <- bin21 + 1
+         }
+         if ((pixel >= 32) & (pixel < 64)) {
+            bin22 <- bin22 + 1
+         }
+         if ((pixel >= 64) & (pixel < 96)) {
+            bin23 <- bin23 + 1
+         }
+         if ((pixel >= 96) & (pixel < 128)) {
+            bin24 <- bin24 + 1
+         }
+         if ((pixel >= 128) & (pixel < 160)) {
+            bin25 <- bin25 + 1
+         }
+         if ((pixel >= 160) & (pixel < 192)) {
+            bin26 <- bin26 + 1
+         }
+         if ((pixel >= 192) & (pixel < 224)) {
+            bin27 <- bin27 + 1
+         }
+         if ((pixel >= 224) & (pixel < 256)) {
+            bin28 <- bin28 + 1
+         }
+      }
+      fVector2 <- c(bin21, bin22, bin23, bin24, bin25, 
+                           bin26, bin27, bin28)
+      allFvectors2 <- c(allFvectors2, fVector2)
+   }
+   print(paste("Distance score", g, "is"))
+   pairDistance <- abs(allFvectors1-allFvectors2)
+   print(pairDistance)
+   distanceScores <- list(distanceScores, pairDistance)
+}
+
+# genuine pair distance scores
+genuinePair1DistanceScore <- distanceScores[[1]][[1]][[1]][[1]][[1]][[2]]
+genuinePair2DistanceScore <- distanceScores[[1]][[1]][[1]][[1]][[2]]
+genuinePair3DistanceScore <- distanceScores[[1]][[1]][[1]][[2]]
+
+# imposter pair distance scores
+imposterPair1DistanceScore <- distanceScores[[1]][[1]][[2]]
+imposterPair2DistanceScore <- distanceScores[[1]][[2]]
+imposterPair3DistanceScore <- distanceScores[[2]]
+
+```
+
+

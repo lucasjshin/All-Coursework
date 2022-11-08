@@ -1,0 +1,446 @@
+---
+title: "MATH218_Test1"
+author: "Lucas Shin"
+date: "10/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE) 
+
+library(FNN)
+library(MASS)
+library(ISLR)
+library(readxl)
+library(tidyverse)
+library(dplyr)
+library(ggforce)
+library(rpart)
+library(rattle)
+```
+
+1) Reason 1: The first reason this might be the case is that LDA is effective for linear problems, so if the 
+data the linear discriminant analysis is performed on is non-linear (such as the enclosed circle example in
+class), the model might not be able to split the data up in a way that is useful for LDA. Thus, the data might
+not be suitable for LDA, and might have trouble classifying "negative" predictions.
+
+Reason 2: The second reason this might be the case is that the data set is made up of mostly, or all, positives
+(the predicted scenario is extremely likely to occur). For example, if you were trying to predict a powerhouse
+high school basketball team's record in league based on their offensive and defensive statistics--and the
+training data you were using went back 20 years, each of which displayed undefeated (12-0) league records--then
+your LDA model would only predict positives. No matter what you lower your threshold value to, the model would
+still only predict positives because the data only showed positives regardless of the other statistics
+available.
+
+--------------------------------------------------------------------------------------------------------------
+
+2) (a) The reason the orange portion in the bottom left is so large is because there are no data points that
+exist with quantitative values lower than 15. Therefore, with it being k = 3, any points in the bottom left 
+will have 3 nearest neighbors with predicted values around 15 (which means they will be colored as orange). 
+This is because the nearest actual data points all have values of around 15, so predicted points--which are 
+calculated using the other k nearest points in their "neighborhoods" and finding their average--will be
+predicted as also having values near 15.
+
+   (b) Since the predicted values are calculated by finding the mean of the k nearest neighbors, one of the three
+neighbors must be an outlier that skews the mean of the other two data points (which have actual values of 20). 
+
+--------------------------------------------------------------------------------------------------------------
+
+3) (a) A situation with this model that would be terrible is predicting whether you should invite an NBA
+draft prospect to the live event based on their chances of getting drafted (I'm assuming that being at the 
+nationally televised event with your whole family and not getting drafted should be avoided at all costs).
+In this scenario, 0 corresponds with not drafted and 1 corresponds with drafted. Only a very small proportion 
+of basketball players are drafted into the NBA every year, so with a 50% classification accuracy, there would 
+be way too many people at the event that would have to  experience that level of embarrassment in front of 
+the world.
+
+  (b) A situation with this model that would be okay for is predicting whether a raincoat needed or not in
+Southern California on any given day in 2021. In this scenario, 0 corresponds with not needing a raincoat and 
+1 corresponds with needing a raincoat. The chances of it raining are low (due to the drought), and even if 
+the model predicts incorrect, the consequences of having to carry around a raincoat are insignificant.
+  
+  
+  (c) A situation with this model that would be impressive is predicting whether the ball will land on a 
+given number in roulette at a casino. In this scenario, 0 corresponds with the number not being landed on and
+1 corresponds with the number being landed on. The chances of correctly predicting the number landed on is very
+low, so in a gambling setting, predicting whether a number will be landed on or not at 50% classification 
+accuracy would be very impressive (and valuable). You would be able to save your money or win big.
+
+--------------------------------------------------------------------------------------------------------------
+
+4) We will now construct a model to predict whether a person will have a stroke using the k-nearest-neighbors
+algorithm. The data set we are being provided contains the variables: id, gender, age, hypertension, 
+heart_disease, ever_married, work_type, residence_type, avg_glucose_level, bmi, smoking_status, and stroke 
+(whether or not the patient had a stroke).
+
+
+```{r}
+stroke.data <- read_csv("healthcare-dataset-stroke-data.csv") %>% 
+   subset(select = -c(id, work_type, gender, smoking_status)) %>% 
+   filter(!grepl('N/A', bmi)) %>% 
+   mutate(residence = ifelse(Residence_type == "Urban", 1, 0)) %>% 
+   mutate(ever.married = ifelse(ever_married == "Yes", 1, 0)) %>% 
+   subset(select = -c(Residence_type, ever_married))
+```
+
+
+Above, I remove the columns id,  work_type, gender, smoking_status and all other rows that contain "N/A" in 
+the bmi column. I remove the work_type column because it consists of several qualitative values that could 
+not be represented by quantitative values (and thus cannot be utilized for knn). Although gender and 
+smoking_status seem like they could be possible factors contributing to a stroke, I remove them for similar
+reasons--gender, because male, female, and other could not be assigned to a binary or numeric scale, and
+smoking_status, because it is impossible to assign a value to unknown and formerly smoked (how could we
+differentiate between a previous heavy-smoker and someone who smoked once or twice in the past). I also 
+remove the rows containing 'N/A' so that the patients are more uniformly represented (all patients have 
+the same information available). Last, I transformed the Residence_type and ever_married data to a binary 
+scale.
+
+Next, I will normalize the data from columns 'age', 'avg_glucose_level', and 'bmi' so that their values fall 
+between 0 and 1 (which will put each variable on the same scale). I will do this using the equation: 
+
+                        scaled.column <- (x - min(x's column))/(max(x's column)-min(x's column))
+                        
+This equation was taken from "https://towardsdatascience.com/k-nearest-neighbors-algorithm-with-examples-in-r-simply-explained-knn-1f2c88da405c". The normalization code in the next chunk was also taken from this website.
+
+
+```{r}
+# convert data to numeric type
+stroke.data$age <- as.numeric(as.character(stroke.data$age))  # Convert age variable to numeric
+stroke.data$hypertension <- as.numeric(as.character(stroke.data$hypertension))  # Convert hypertension variable to numeric
+stroke.data$heart_disease <- as.numeric(as.character(stroke.data$heart_disease))  # Convert heart disease variable to numeric
+stroke.data$avg_glucose_level <- as.numeric(as.character(stroke.data$avg_glucose_level))  # Convert avg_glucose_level variable to numeric
+stroke.data$stroke <- as.numeric(as.character(stroke.data$stroke))  # Convert stroke variable to numeric
+stroke.data$bmi <- as.numeric(as.character(stroke.data$bmi))  # Convert bmi variable to numeric
+stroke.data$residence <- as.numeric(as.character(stroke.data$residence))  # Convert residence variable to numeric
+stroke.data$ever.married <- as.numeric(as.character(stroke.data$ever.married))  # Convert ever.married variable to numeric
+
+# create a normalization function
+normalize <-function(x) { 
+  (x-min(x))/(max(x)-min(x))   
+}
+
+# Run normalization all columns so that 'age', 'avg_glucose_level', and 'bmi' are normalized 
+normalized.stroke.data <- as.data.frame(lapply(stroke.data[,c(1,2,3,4,5,6,7,8)], normalize))
+```
+
+
+```{r}
+
+# Make a vector to capture predictions for each k
+pred.vector <- NULL
+error.vector <- NULL
+
+for(k in 1:100){
+  for(row in 1:nrow(normalized.stroke.data)){
+    
+    # Create test data
+    test.data <- normalized.stroke.data[row, ] %>%
+      dplyr::select(-stroke)
+    
+    # Create training data
+    training.data <- normalized.stroke.data[-row, ] 
+    
+    training.data.no.stroke <- training.data %>%
+      dplyr::select(-stroke)
+    
+    # Regression
+    model1.reg <- knn.reg(train = training.data.no.stroke,
+                          test = test.data,
+                          k = k,
+                          y = training.data$stroke)
+    
+    pred.vector[row] <- model1.reg$pred - (stroke.data[row, ] %>% pull(stroke))
+
+  }
+  # Average error for a given value of k (across all data values), mean^2
+  error.vector[k] <- mean(pred.vector^2)
+}
+```
+
+
+I chose to use a regression model because the variable we are trying to predict, stroke, is a quantitative 
+variable, not a categorical one. The 'stroke' variable is binary, but that does not mean that it is 
+categorical. Also, I chose to use mean squared error here to maximize the error values (so that small 
+error values were more easily represented, identified, and accounted for).
+
+
+```{r}
+# Check the error at each k
+pred.data <- data.frame(error.vector,
+                        k = 1:100)
+
+pred.data %>%
+  ggplot(aes(x = k,
+             y = error.vector)) +
+  geom_point() +
+  scale_y_continuous(name="Error", limits=c(.035, .08))
+
+# find the minimum error value from the error.vector previously calculated
+min.error <- min(error.vector)
+# find the optimal k that is associated with the min.error
+optimal.k <- match(min.error, error.vector)
+
+print(paste0("Minimum Error: ", min.error))
+print(paste0("Optimal k Value: ", optimal.k))
+```
+
+
+Printed above are the optimal k value (k = 67) along with its error value at that k (~.03809). Now we will use 
+this optimal k to visualize the success of the model plotted against avg_glucose_level and bmi. This 2D graph 
+will use the fixed medians of all of the other variables (age, hypertension, heart_disease, residence, 
+ever.married) and vary avg_glucose_level and bmi. I chose to vary avg_glucose_level and bmi because they were 
+the two metrics that had finite, measurable, values that were precisely calculated (contrary to variables such 
+as residence and ever.married, which are too broad to make any conclusions with). 
+
+
+```{r}
+ggplot(mapping = aes(x = avg_glucose_level, y = bmi)) + 
+        geom_point(size = .4, data = normalized.stroke.data, aes(color = stroke))
+
+#Let's make a grid of all possible combinations of avg_glucose_level and bmi
+grid <- expand.grid(avg_glucose_level = seq(from = 0, to = 1, by = .01),
+                    bmi = seq(from = 0, to = 1, by = .01))
+
+grid <- grid %>%
+  group_by(avg_glucose_level, bmi)
+
+medians <- normalized.stroke.data %>%
+  select(-stroke, -avg_glucose_level, -bmi) %>%
+  summarize_all(median)
+
+prediction = knn.reg(train = normalized.stroke.data %>% select(-stroke), 
+                     test = grid %>% mutate(medians),
+                     k = 67,
+                     y = normalized.stroke.data)
+
+grid <- grid %>%
+  cbind(prediction$pred) 
+
+colnames(grid) <- c("avg_glucose_level", "bmi", "prediction")
+
+grid %>%
+  ggplot() +
+  geom_point(size = 5, mapping = aes(x = avg_glucose_level, y = bmi, color = prediction)) +
+  theme_bw()
+```
+
+
+As shown above, as avg_glucose_level and bmi are high, the chances for a stroke are higher, which is what 
+one would expect. In general, when avg_glucose_level increases, the chance for a stroke increases (no matter 
+what the bmi). The same goes for increasing the bmi, but on a lesser extent. Looking at the graph, it looks 
+like avg_glucose_level raises the chance of a predicted stroke more than an increase in bmi does.
+
+--------------------------------------------------------------------------------------------------------------
+
+5) To construct our LDA model, we'll use the same data set that we constructed in question #4. Below we 
+will calculate the proportion of the data set that had a stroke, and the proportion that did not. We will 
+use these proportions in our lda model.
+
+
+```{r}
+# find out our proportions
+print(normalized.stroke.data %>% summarize(proportion.stroke = mean(stroke, na.rm = TRUE)))
+print(normalized.stroke.data %>% summarize(proportion.no.stroke = 1 - mean(stroke, na.rm = TRUE)))
+```
+
+
+Above shows the proportions of the people with and without strokes in the data set. About 4.3% of the population
+had a stroke, and 95.7% of the population did not.
+
+Next, we will plot the density functions of the input variables to check if they have Gaussian-looking 
+distributions (with bell shapes).
+
+
+```{r}
+#Let's plot the density function for age
+normalized.stroke.data %>%
+  ggplot() +
+  geom_density(aes(x = age, fill = stroke),
+               alpha = 0.3)
+
+#Let's plot the density function for hypertension
+normalized.stroke.data %>%
+  ggplot() +
+  geom_density(aes(x = hypertension, fill = stroke),
+               alpha = 0.3)
+
+#Let's plot the density function for heart disease
+normalized.stroke.data %>%
+  ggplot() +
+  geom_density(aes(x = heart_disease, fill = stroke),
+               alpha = 0.3)
+
+#Let's plot the density function for avg_glucose_level
+normalized.stroke.data %>%
+  ggplot() +
+  geom_density(aes(x = avg_glucose_level, fill = stroke),
+               alpha = 0.3)
+
+#Let's plot the density function for bmi
+normalized.stroke.data %>%
+  ggplot() +
+  geom_density(aes(x = bmi, fill = stroke),
+               alpha = 0.3)
+
+#Let's plot the density function for residence
+normalized.stroke.data %>%
+  ggplot() +
+  geom_density(aes(x = residence, fill = stroke),
+               alpha = 0.3)
+
+#Let's plot the density function for ever.married
+normalized.stroke.data %>%
+  ggplot() +
+  geom_density(aes(x = ever.married, fill = stroke),
+               alpha = 0.3)
+```
+
+
+As shown by the graphs above, the binary variables--hypertension, heart_disease, residence, ever.married--do 
+not have Gaussian distributions. I will leave them out of my LDA model in order to satisfy the assumption 
+that LDA models use input variables with Gaussian distributions.
+
+
+```{r}
+new.stroke.data <- normalized.stroke.data %>% 
+   subset(select = -c(hypertension, heart_disease, residence, ever.married))
+
+set.seed(1)
+
+# create testing and training sets for the LDA model. Use 70% of dataset as training set and 
+# remaining 30% as testing set (method of creating training and test taken from:
+# https://www.statology.org/linear-discriminant-analysis-in-r/)
+sample <- sample(c(TRUE, FALSE), nrow(new.stroke.data), replace=TRUE, prob=c(0.7,0.3))
+train.data <- new.stroke.data[sample, ]
+test.data <- new.stroke.data[!sample, ] 
+```
+
+
+In the code below, we will run our LDA function using two variables. I chose avg_glucose_level and bmi once
+again for the same reason--they were the only two variables that were actual, concrete, metrics that could 
+be measured. Variables such as ever.married and smoking_status are to broad and can mean many different 
+things that cannot be observed/recorded.
+
+
+```{r}
+lda.stroke <- lda(stroke ~ avg_glucose_level + bmi, data = train.data, prior = c(0.04257486, 0.9574251))
+predictions <- predict(lda.stroke, test.data)
+```
+
+
+Next, I will use the values calculated by the LDA function to determine metrics such as sensitivity and false
+omission rate (FOR), which I believe are the most relevant measurements in predicting strokes. I believe 
+a high sensitivity and a low false omission rate are the most important indicators for a "successful" model
+because, in my opinion, saving one extra life is more valuable than saving money and possibly failing to alert
+someone of a possible stroke. 
+
+I will calculate these two values for all thresholds from 0 to 1 (by increments of 0.01) so that I can determine the best threshold for the model.
+
+
+```{r}
+# find best sensitivities and false omission rates
+sensitivities <- c()
+FORs <- c()
+
+# set boundaries of .88 and .99 because other values from 0 to 1 produce NAs
+possible.threshold <- seq(from = .88,
+                          to = .99,
+                          by = 0.01)
+
+for(threshold in possible.threshold){
+   
+   X <- threshold
+   
+   stroke.data.new <- test.data %>%
+     mutate(preds = case_when(predictions$posterior[,2] >= X ~ "Yes",
+                              TRUE ~ "No"))
+   
+   #Confusion Matrix
+   confusionMatrix <- table(stroke.data.new$stroke, stroke.data.new$preds)
+   
+   print(threshold)
+   print(confusionMatrix)
+   
+   sensitivities <- c(sensitivities, confusionMatrix[4]/(confusionMatrix[4]+confusionMatrix[2]))
+   FORs <- c(FORs, confusionMatrix[2]/(confusionMatrix[2]+confusionMatrix[1]))
+}
+
+print(paste0("Max Sensitivity: ", max(sensitivities)))
+max.sensitivity.index <- which.max(sensitivities)
+print(paste0("Corresponding Threshold: ", possible.threshold[max.sensitivity.index]))
+
+print(paste0("Min FOR: ", min(FORs)))
+min.FOR.index <- which.min(FORs)
+print(paste0("Corresponding Threshold: ", possible.threshold[min.FOR.index]))
+```
+
+
+Printed above are the confusion matrices with each of their respective thresholds (printed above each). Also
+shown are the maximum sensitivity (1) and minimum false omission rate (0) along with their corresponding
+thresholds, which both happen to be 0.88. 
+
+I am choosing 0.88 as my threshold because, as stated previously, keeping the highest possible sensitivity and
+lowest possible FOR are the goals of this stroke-predicting model (in the real world, I would want to alert
+everyone who might have a stroke). These two metrics have their optimal values at a threshold of 0.88, so that
+is what I will use as the threshold for my LDA model.
+
+--------------------------------------------------------------------------------------------------------------
+
+6) (a) In order to identify the best possible LDA model to predict a stroke, given that the "cost" of a false
+positive is X and the cost of a false negative is 3X, I will calculate the total "costs" at each of the 
+possible thresholds and find the minimum sum of the two costs.
+
+
+```{r}
+a.costs <- c()
+
+for(threshold in possible.threshold){
+  X <- threshold
+  stroke.data.new <- test.data %>%
+    mutate(preds = case_when(predictions$posterior[,2] >= X ~ "Yes",
+                             TRUE ~ "No"))
+  
+  # Confusion Matrix
+  confusionMatrix <- table(stroke.data.new$stroke, stroke.data.new$preds)
+  
+  # calculate cost
+  a.costs <- c(a.costs, confusionMatrix[2]*3 + confusionMatrix[3])
+}
+
+print(paste0("Minimum Cost: ", min(a.costs)))
+min.a.cost.index <- which.min(a.costs)
+print(paste0("Corresponding Threshold: ", possible.threshold[min.a.cost.index]))
+```
+
+
+As shown above, the best possible threshold for the given costs was 0.99 because it produced the lowest
+total cost (230). Therefore, an LDA model with threshold 0.99 would be best.
+
+  (b) In order to identify the best possible LDA model to predict a stroke, given that the "cost" of a false
+positive is $100 and the cost of a false negative is $100,000, I will calculate the total "costs" at each 
+of the possible thresholds and find the minimum sum of the two costs.
+
+```{r}
+b.costs <- c()
+
+for(threshold in possible.threshold){
+  X <- threshold
+  stroke.data.new <- test.data %>%
+    mutate(preds = case_when(predictions$posterior[,2] >= X ~ "Yes",
+                             TRUE ~ "No"))
+  
+  # Confusion Matrix
+  confusionMatrix <- table(stroke.data.new$stroke, stroke.data.new$preds)
+  
+  # calculate cost
+  b.costs <- c(b.costs, confusionMatrix[2]*100000 + confusionMatrix[3]*100)
+}
+
+print(paste0("Minimum Cost: ", min(b.costs)))
+min.b.cost.index <- which.min(b.costs)
+print(paste0("Corresponding Threshold: ", possible.threshold[min.b.cost.index]))
+```
+
+
+As shown above, the best possible threshold for the given costs was 0.89 because it produced the lowest
+total cost ($140,100). Therefore, an LDA model with threshold .89 would be best.

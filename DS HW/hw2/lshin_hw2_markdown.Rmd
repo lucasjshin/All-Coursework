@@ -1,0 +1,140 @@
+---
+title: "lshin_hw2_markdown"
+author: "Lucas Shin"
+date: "9/30/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(babynames)
+library(ggplot2)
+```
+
+# 1
+```{r}
+babynames %>%
+   group_by(name) %>% 
+   summarize(total = sum(n)) %>% 
+   arrange(-total) %>% 
+   head(10)
+```
+
+The top 10 most common baby names (for US babies) and the number of babies with each can be found below:
+James	    5173828			
+John	    5137142			
+Robert	 4834915			
+Michael	 4372536			
+Mary	    4138360			
+William	 4118553			
+David	    3624225			
+Joseph	 2614083			
+Richard	 2572613			
+Charles	 2398453	
+
+
+# 2 
+```{r}
+babynames %>% 
+   select(year, n, prop) %>% 
+   filter(year >= 1880) %>% 
+   group_by(year) %>% 
+   ggplot(mapping = aes(x = year,
+                        y = n)) +
+   geom_bar(stat = "identity") +
+   labs(x = "Year", y = "Total US Births")
+```
+
+As the graph above shows, the total US births have generally increased over time, with large spikes in births around 1920 and 1960 (each of these spikes was followed by drops in births in the following years). The overall upward trend in births can most likely be attributed to advancements in medicine and an increase in food availability. The decrease in births from the mid 1920s to around 1930 can be attributed to the Great Depression, when unemployment rates rose and people were struggling financially. The decrease in births from around 1960-1975 can be attributed to a change in societal standards (more opportunities given to women) and an increase and improvement in contraceptives. 
+
+
+# 3
+```{r}
+babynames %>%
+   group_by(year) %>% 
+   filter(year == 2000) %>%
+   summarize(total = sum(n))
+```
+
+The US births in 2000 was approximately 4,059,000 (according to https://pubmed.ncbi.nlm.nih.gov/11876093/). The number of US births recorded by babynames in 2000 is 3,778,079.
+
+The number of US births reported by the government in 2000 is about 300,000 greater than that reported by the SSA. I don't think these values should be equal. According to the description of babynames, only names with at least 5 uses were reported. Thus, if an uncommon name was given to a baby, it was not included in this data set, so the total number of births should be lower than the total number reported by the government.
+
+
+# 4 
+```{r}
+babynames %>% 
+   group_by(name) %>% 
+   summarize(total = sum(n)) %>% 
+   filter(total>=1000) %>% 
+   mutate(numChar = str_length(name)) %>% 
+   arrange(-numChar)
+```
+
+Maryelizabeth and Michaelangelo are the two longest names given to at least 1,000 babies (each 13 letters long).
+
+ 
+# 5
+```{r}
+babynames %>% 
+   mutate(count = str_length(name)) %>%
+   mutate(chars = n*count) %>%
+   group_by(year) %>%
+   summarize(lengthOfNames = sum(chars)/sum(n)) %>% 
+   ggplot(mapping = aes(x = year,
+                        y = lengthOfNames)) +
+   geom_line(stat = "identity",
+             color = "blue") +
+   labs(x = "Year",
+        y = "Avg Length of Name") +
+   theme_bw()
+```
+
+As shown by the above graph, the average length of baby names in the US increased over time. Around 1950, there was a spike in average baby name lengths. Also, from 1960 to around 1990, there was another large increase in average length. After around 1990, the average length of baby names began to decrease.
+
+
+# 6
+First, I filtered through and grouped the data from babynames to find the baby names that changed most in femaleness from 1880 to 2017. I chose the 3 names that changed the most (Donnie, Leslie, Robbie. 
+```{r}
+names <- babynames %>% 
+   filter(year %in% c("1880", "2017")) %>% 
+   select(year, sex, name, n) %>% 
+   group_by(name, year) %>% 
+   mutate(total = sum(n)) %>% 
+   mutate(propO = n/total)%>% 
+   filter(sex == "F") %>% 
+   group_by(name) %>% 
+   summarize(change = max(propO) - min(propO)) %>% 
+   filter(change > 0, 
+          change < 1) %>% 
+   arrange(-change) %>% 
+   head(3)
+```
+
+Then, I filtered through the data set again to see how much Donnie, Leslie, and Robbie decreased (or increased) in "femaleness" every year from 1880 to 2017.
+```{r}
+name3 <- babynames %>% 
+   group_by(year, name) %>% 
+   filter(name %in% c("Donnie", "Leslie", "Robbie")) %>% 
+   select(year, sex, name, n) %>% 
+   mutate(total = sum(n)) %>% 
+   mutate(prop = n/total) %>%
+   filter(sex == "F") 
+```
+
+Then, I graphed this proportion of "femaleness" over time, as shown below.
+```{r}
+name3 %>% 
+   ggplot(mapping = aes(x = year,
+                     y = prop)) +
+   geom_line(aes(color = name)) +
+   geom_text(data = name3 %>% filter(year == "1981"),
+             aes(label = name),
+             vjust = 2) +
+   xlab("Year") +
+   ylab("Proportion of Females w/ This Name") +
+   theme_bw() +
+   labs(title = "Change in the 'Femaleness' of Names Over Time (1880-2017)")
+```

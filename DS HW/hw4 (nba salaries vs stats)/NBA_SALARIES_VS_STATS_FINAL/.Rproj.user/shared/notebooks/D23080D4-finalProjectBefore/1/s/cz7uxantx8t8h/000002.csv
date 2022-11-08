@@ -1,0 +1,8 @@
+"0","# Check the error at each k"
+"0","pred.data <- data.frame(error.vector,"
+"0","                        k = 1:50)"
+"0",""
+"0","pred.data %>%"
+"0","  ggplot(aes(x = k,"
+"0","             y = error.vector)) +"
+"0","  geom_point()"

@@ -1,0 +1,12 @@
+name: NBA_Salary_vs_Stats
+title: NBA_Salary_vs_Stats
+username:
+account: lucasjshin
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 3210450
+bundleId: 3847767
+url: https://lucasjshin.shinyapps.io/NBA_Salary_vs_Stats/
+when: 1605108609.53903
+asMultiple: FALSE
+asStatic: FALSE

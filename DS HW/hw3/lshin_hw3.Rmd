@@ -1,0 +1,15 @@
+---
+title: "lshin_hw3"
+author: "Lucas Shin"
+date: "10/19/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+```
+
+a)
+

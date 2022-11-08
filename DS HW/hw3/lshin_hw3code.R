@@ -1,0 +1,115 @@
+# DS Hw 3
+library(tidyverse)
+
+# Load in data
+Summary <- read_csv("Summary.csv")
+productInfo <- read_csv("Product Info.csv")
+hShipments <- read_csv("Historical Shipments.csv")
+hOrders <- read_csv("Historical Orders.csv")
+carrierRates <- read_csv("Carrier Rates.csv")
+
+# Anuual Product Costs of Hammers
+productCosts <- hOrders %>% 
+   filter(`Product Id` == 1) %>% # only look at wrenches, because the total number of wrenches is equal to the total number of hammers
+   mutate(totalQty = cumsum(`Order Qty`)) %>%
+   mutate(projectedQty = totalQty*1.1) %>%
+   mutate(hamAcost = projectedQty*.8) %>%
+   mutate(hamBcost = projectedQty*.82)
+
+print(max(productCosts$hamAcost)) # product cost of hammers from Supplier A
+print(max(productCosts$hamBcost)) # product cost of hammers from Supplier B
+
+
+   
+#Transportation cost
+carrierX <- carrierRates %>% 
+   filter(Carrier == "X")
+
+carrierY <- carrierRates %>% 
+   filter(Carrier == "Y")
+
+SupplierA <- hOrders %>% 
+   filter(`Product Id` == 1) %>% # filter for wrenches (because # of wrenches and hammers is equal)
+   mutate(quantityNew = `Order Qty`*1.1) %>% # predicting quantity based on expected yearly growth 
+   mutate(hamWeight = 2) # hammers weigh 2 lbs
+
+# duplicate data to check for supplier B
+SupplierB <- SupplierA %>% 
+   select(!Supplier) %>% 
+   mutate(Supplier = "B")
+
+# combine data sets
+suppliersAB <- rbind(SupplierA, SupplierB)
+
+# combine data with carrierX data
+carrierXjoined <- left_join(suppliersAB, carrierX, by = c("Supplier", "Str Nbr")) %>% 
+   rename(carrierXcost = Cost) %>% 
+   select(`Order Dt`, `Str Nbr`, Supplier, quantityNew, hamWeight, carrierXcost)
+
+# add carrierY data to data set
+carrierXYjoined <- left_join(carrierXjoined, carrierY, by = c("Supplier", "Str Nbr")) %>%     
+   rename(carrierYcost = Cost) %>% 
+   select(`Order Dt`, `Str Nbr`, Supplier, quantityNew, hamWeight, carrierXcost, carrierYcost)
+
+# clean up data, taking out punctuation from costs
+carrierXYjoined$carrierYcost <- str_extract(carrierXYjoined$carrierYcost,
+                                            "[:digit:][:punct:][:digit:]{2}")
+carrierXYjoined$carrierXcost <- str_extract(carrierXYjoined$carrierXcost,
+                                            "[:digit:][:punct:][:digit:]{3}")
+carrierXYjoined$carrierXcost <- str_remove(carrierXYjoined$carrierXcost,
+                                               "[:punct:]")
+
+# find total weight of hammers, and create new data set "shippingXY"
+shippingXY <- carrierXYjoined %>% 
+   mutate(totalWeight = as.numeric(hamWeight)*as.numeric(quantityNew)) %>% 
+   select(`Order Dt`, `Str Nbr`, Supplier, totalWeight, carrierXcost, carrierYcost)
+
+# change types from characters to doubles
+shippingXY$totalWeight <- as.numeric(shippingXY$totalWeight)
+shippingXY$carrierXcost <- as.numeric(shippingXY$carrierXcost)
+shippingXY$carrierYcost <- as.numeric(shippingXY$carrierYcost)
+
+newHshipments <- hShipments %>% 
+   rename(`Order Dt` = `Shipment Date`)
+   
+# adds the old total weight of the shipments to the new predicted weight of the hammers
+shippingXYnew <- left_join(shippingXY, newHshipments, by = c("Order Dt", "Str Nbr", "Supplier")) %>% 
+   rename(hammerWeights = totalWeight) %>% 
+   rename(oldWeights = Weight) %>% 
+   mutate(finalWeight = 1.1*(oldWeights)+hammerWeights) %>% 
+   mutate(carrierYtotalCost = finalWeight*as.numeric(carrierYcost)) %>% 
+   rename(carrierXtotalCost = carrierXcost) %>% 
+   select(`Order Dt`, `Str Nbr`, Supplier, carrierYcost, oldWeights, hammerWeights, finalWeight, carrierXtotalCost, carrierYtotalCost) %>% 
+   mutate(minShipping = min(carrierXtotalCost, carrierYtotalCost))
+
+# change types from characters to doubles
+shippingXYnew$minShipping <- as.numeric(shippingXYnew$minShipping)
+shippingXYnew$carrierXtotalCost <- as.numeric(shippingXYnew$carrierXtotalCost)
+shippingXYnew$carrierYtotalCost <- as.numeric(shippingXYnew$carrierYtotalCost)
+
+shippingAham <- shippingXYnew %>% 
+   filter(Supplier == "A") %>% 
+   summarize(sum(minShipping)) # finds the total transportation cost for scenario A (when we choose to produce the hammers at A)
+
+shippingBham <- shippingXYnew %>% 
+   filter(Supplier == "B") %>% 
+   summarize(sum(minShipping)) # finds the total transportation cost for scenario B (when we choose to produce the hammers at B)
+
+shippingAnoHam <- shippingXYnew %>% 
+   filter(Supplier == "A") %>% 
+   select(`Order Dt`, `Str Nbr`, carrierYcost, oldWeights, carrierXtotalCost) %>% 
+   mutate(carrierYtotalCost = 1.1*oldWeights*as.numeric(carrierYcost)) %>% 
+   group_by(`Order Dt`, `Str Nbr`) %>% 
+   mutate(minShipping = min(carrierXtotalCost, carrierYtotalCost)) %>%
+   ungroup() %>%
+   summarize(sum = sum(as.numeric(minShipping)))
+
+shippingBnoHam <- shippingXYnew %>% 
+   filter(Supplier == "B") %>% 
+   select(`Order Dt`, `Str Nbr`, carrierYcost, oldWeights, carrierXtotalCost) %>% 
+   mutate(carrierYtotalCost = 1.1*oldWeights*as.numeric(carrierYcost)) %>% 
+   group_by(`Order Dt`, `Str Nbr`) %>% 
+   mutate(minShipping = min(carrierXtotalCost, carrierYtotalCost)) %>%
+   ungroup() %>%
+   summarize(sum = sum(as.numeric(minShipping)))
+

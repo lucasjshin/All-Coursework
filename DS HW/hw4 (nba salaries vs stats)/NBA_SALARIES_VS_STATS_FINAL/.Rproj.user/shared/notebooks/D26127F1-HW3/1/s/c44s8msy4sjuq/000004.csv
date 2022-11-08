@@ -1,0 +1,17 @@
+"0","# ranger package"
+"0","print(""Ranger Function 1 (mtry = 3): "")"
+"1","[1]"
+"1"," ""Ranger Function 1 (mtry = 3): """
+"1","
+"
+"0","system.time({"
+"0","  rf3 <- ranger(factor(`_golden`) ~ ., "
+"0","                data = oscar,"
+"0","                probability = TRUE,"
+"0","                mtry = 3,"
+"0","                importance = ""permutation"") #,"
+"0","                #mtry = c(1, 2, 3))"
+"0","})"
+"2","Error in rangerCpp(treetype, x, y.mat, independent.variable.names, mtry,  : 
+  function 'Rcpp_precious_remove' not provided by package 'Rcpp'
+"

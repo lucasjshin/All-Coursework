@@ -1,0 +1,13 @@
+library(FNN)
+library(MASS)
+library(ISLR)
+library(readxl)
+library(tidyverse)
+library(dplyr)
+library(ggforce)
+library(rpart)
+library(rattle)
+
+library(randomForest)
+library(ipred)
+library(dendextend)

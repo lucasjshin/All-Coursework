@@ -1,0 +1,14 @@
+---
+title: "lshin_hw2_markdown"
+author: "Lucas Shin"
+date: "10/15/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+install.packages("png")
+library("png")
+```

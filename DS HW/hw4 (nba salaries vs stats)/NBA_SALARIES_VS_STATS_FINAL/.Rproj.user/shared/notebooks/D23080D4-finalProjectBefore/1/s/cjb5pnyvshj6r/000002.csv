@@ -1,0 +1,8 @@
+"0","# create a normalization function"
+"0","normalize <-function(x) { "
+"0","  (x-min(x))/(max(x)-min(x))   "
+"0","}"
+"0",""
+"0","# Run normalization all columns so that 'age', 'avg_glucose_level', and 'bmi' are normalized "
+"0","normalized.nba.data.before <- as.data.frame(lapply(nba.data.before[,c(1:21)], normalize))"
+"0",""

@@ -1,0 +1,1190 @@
+#### Class Notes 9/15/21
+
+library(readxl)
+library(tidyverse)
+
+
+gpa.data <- read_excel(file.choose())
+
+
+#IS 3.5 a good cutoff?
+gpa.data %>%
+  ggplot(aes(x = GPA,
+             y = factor(0))) +
+  geom_vline(xintercept = 3.5,
+             size = 3.5) +
+  geom_point(aes(color = factor(Admit)))
+
+
+#How many points
+#in my data below 3.5 are correctly predicted?
+gpa.data %>%
+  filter(GPA < 3.5) %>%
+  summarize(accuracy = 1 - mean(Admit))
+
+#how many points >= 3.5 are correctly predicted?
+gpa.data %>%
+  filter(GPA >= 3.5) %>%
+  summarize(accuracy = mean(Admit))
+
+
+
+### Calculate whether or not each data value
+#is predicted correctly based on our cutoff
+
+cutoff <- 3.5
+
+gpa.data %>%
+  mutate(isCorrect = case_when(GPA < cutoff & Admit == 0 ~ 1,
+                               GPA < cutoff & Admit == 1 ~ 0,
+                               GPA >= cutoff & Admit == 0 ~ 0,
+                               GPA >= cutoff & Admit == 1 ~ 1)) %>%
+  summarize(accuracy = mean(isCorrect))
+
+
+### Class Notes 9/17/21
+
+ans <- NULL
+possible.cutoffs <- seq(from = min(gpa.data$GPA),
+                        to = max(gpa.data$GPA),
+                        by = 0.01)
+
+for(i in possible.cutoffs){
+
+cutoff <- i
+
+acc <- gpa.data %>%
+  mutate(isCorrect = case_when(GPA < cutoff & Admit == 0 ~ 1,
+                               GPA < cutoff & Admit == 1 ~ 0,
+                               GPA >= cutoff & Admit == 0 ~ 0,
+                               GPA >= cutoff & Admit == 1 ~ 1)) %>%
+  summarize(accuracy = mean(isCorrect)) %>%
+  pull(accuracy)
+
+ans <- c(ans, acc)
+
+}
+
+#Plot my accuracy values
+plot(possible.cutoffs, ans)
+
+#Where is accuracy maximized?
+which.max(ans)
+possible.cutoffs[352]
+
+# A better way!
+
+
+ans <- NULL
+
+
+for(i in gpa.data$GPA){
+  
+  cutoff <- i
+  
+  acc <- gpa.data %>%
+    mutate(isCorrect = case_when(GPA < cutoff & Admit == 0 ~ 1,
+                                 GPA < cutoff & Admit == 1 ~ 0,
+                                 GPA >= cutoff & Admit == 0 ~ 0,
+                                 GPA >= cutoff & Admit == 1 ~ 1)) %>%
+    summarize(accuracy = mean(isCorrect)) %>%
+    pull(accuracy)
+  
+  ans <- c(ans, acc)
+  
+}
+
+plot(gpa.data$GPA, ans)
+
+
+#Instead, let's try a more complicated "f" function
+
+#Introducing K-nearest Neighbors (k-NN)
+
+#For example, suppose you have a 3.1 GPA.
+#What's the probability you get admitted to Midd?
+#Suppose K = 3
+
+input.gpa <- 3.1
+k <- 3
+
+gpa.data %>%
+  mutate(distance = abs(input.gpa - GPA)) %>%
+  arrange(distance) %>%
+  head(k) %>%
+  count(Admit) %>%
+  mutate(prob = n/k)
+
+
+#Let's look at the mtcars data set
+mtcars
+
+#Our goal is build a k-NN classifier to predict
+#whether a car has a manual or automatic transmission
+#based solely on hp and mpg.
+
+mtcars %>%
+  ggplot(aes(x = hp, y = mpg, color = factor(am))) +
+  geom_point() +
+  xlim(0, 400) +
+  ylim(0, 400)
+
+
+### Class Notes 9/20/21
+
+#Scale our variables
+
+#Test our function
+hp <- 200
+mpg <- 30
+k <- 3
+
+knn2 <- function(hp, mpg, k){
+  
+  #normalize (scale) our values in data
+  scaled.hp <- (mtcars$hp - mean(mtcars$hp))/sd(mtcars$hp)
+  scaled.mpg <-(mtcars$mpg - mean(mtcars$mpg))/sd(mtcars$mpg)
+  
+  #normalize (scale) user inputs
+  scaled.hp.input <- (hp - mean(mtcars$hp))/sd(mtcars$hp)
+  scaled.mpg.input <-(mpg - mean(mtcars$mpg))/sd(mtcars$mpg)
+  
+  mtcars %>%
+    mutate(scaled.hp, scaled.mpg) %>%
+    mutate(distance = sqrt((scaled.hp.input - scaled.hp)^2 + (scaled.mpg.input - scaled.mpg)^2)) %>%
+    arrange(distance) %>%
+    head(k) %>%
+    summarize(prediction = round(mean(am))) %>%
+    pull(prediction) %>%
+    return()
+    
+  
+}
+
+knn2(hp, mpg, k)
+knn2(500, 10, 5)
+
+#Let's visualize the categorization field for k = 5
+mtcars %>%
+  ggplot(aes(x = hp, y = mpg, color = factor(am))) +
+  geom_point()
+
+#Let's make a grid of all possible combinations of hp and mpg
+expand.grid(c("Alex", "Bob"),
+            c("Red", "Blue"))
+
+grid <- expand.grid(hp = seq(from = 50, to = 400, by = 2),
+                    mpg = seq(from = 10, to = 35, by = 1))
+
+
+grid <- grid %>%
+  group_by(hp, mpg) %>%
+  mutate(prediction = knn2(hp, mpg, 10))
+
+#Make graph
+mtcars %>%
+  ggplot() +
+  geom_point(data = grid, mapping = aes(x = hp, y = mpg, color = factor(prediction))) +
+  geom_point(size = 5, mapping = aes(x = hp, y = mpg, color = factor(am))) +
+  theme_bw()
+
+
+
+### Class Notes 9/22/21
+
+#Let's get in the habit of splitting our data
+#into disjoint training and test sets.
+
+
+#How?
+
+#Introducing Leave-one-out cross-validation (LOOCV)
+
+#What if our data are too big or my computer is too bad or f-hat is too complex?
+
+#k-fold cross-validation
+#(typically used with k = 5 or k = 10)
+
+
+wine <- read_csv(file.choose())
+
+
+
+### Class Notes 9/27/21
+
+
+
+#k-NN: We want to predict some value (quantitative or categorical)
+#based on existing data.
+
+
+####Pros:
+#Math behind predictions is more-or-less understandable
+
+#Minimal assumptions (we assume we can define a distance in each dimension)
+
+
+###Cons:
+#"Subjective" choice of k, our hyperparameter
+
+# We have to choice a distance metric (many common metrics, like Euclidean distance
+# can't handle categorical variables).
+
+#No way of knowing which variables are causing our algorithm to be good or bad
+
+
+
+#We want to predict wine quality!
+wine <- wine %>%
+  na.omit()
+
+
+row <- 1
+k <- 1
+
+#Make a vector to capture predictions for each k
+pred.vector <- NULL
+
+error.vector <- NULL
+
+for(k in 1:20){
+  for(row in 1:nrow(wine)){
+    
+    #Create my test data
+    test.data <- wine[row, ] %>%
+      select(-type, -quality)
+    
+    #Create training data
+    training.data <- wine[-row, ] 
+    
+    training.data.no.quality <- training.data %>%
+      select(-type, -quality)
+    
+    #Let's try classifying
+    # library(FNN)
+    # 
+    # model1 <- knn(train = training.data.no.quality,
+    #               test = test.data,
+    #               k = k,
+    #               cl = factor(training.data$quality))
+    # 
+    # 
+    
+    #Let's try regression
+    library(FNN)
+    
+    model1.reg <- knn.reg(train = training.data.no.quality,
+                          test = test.data,
+                          k = k,
+                          y = training.data$quality)
+    
+    #What is the "error" (difference between predicted quality and true quality)
+    pred.vector[row] <- model1.reg$pred - (wine[row, ] %>% pull(quality))
+    
+    #track progress
+    print(row)
+  }
+  #Average error for a given value of k (across all data values)
+  error.vector[k] <- mean(pred.vector^2)
+  
+  #track progress of my loop
+  print(k)
+  
+}
+#How good is each k?
+pred.data <- data.frame(pred.vector,
+                        k = 1:20)
+
+pred.data %>%
+  ggplot(aes(x = k,
+             y = error.vector)) +
+  geom_point()
+
+
+
+### Class Notes 9/29/21
+
+
+
+
+#A taxi was involved in a hit-and-run accident at night.
+#Only two cab companies exist in this city: Green Cabs, and Blue Cabs.
+
+# 1) 85% of all cabs in this city belong to Green Cabs.
+# 2) There was only one witness at the scene of the crime,
+#    and they reported that the vehicle that hit the person
+#    was blue.
+# 3) The police subjected the witness to extensive eyesight testing
+#    and they found that this person can reliably tell the difference
+#    between green and blue cabs at night with 80% accuracy.
+
+
+# Question: What is the probability that the taxi involved in the hit-and-run
+# was blue as the witness claimed?
+
+
+
+#Class Notes 10/4/21
+#Suppose GPA = 3.8
+
+#R ~ N(2, 0.5)
+#A ~ N(3, 0.5)
+
+#P(Admit | GPA = 3.8) = ?
+
+#Evaluates the normal distribution density function for a given x, mean, and sd
+a.density <- dnorm(x = 3.8, mean = 3, sd = 0.5)
+r.density <- dnorm(x = 3.8, mean = 2, sd = 0.5)
+
+
+
+#
+library(MASS)
+#lda()
+library(ISLR)
+
+#Let's use LDA to predict admittance
+library(readxl)
+gpa.data <- read_excel(file.choose())
+
+
+?lda
+
+lda1 <- lda(factor(Admit) ~ GPA, 
+            data = gpa.data,
+            prior = c(.85, .15))
+
+#Investigate LDA output
+lda1$prior
+
+#Let's predict for GPA = 3.8
+predict(lda1, data.frame(GPA = 3.8))
+
+#Let's look at the Default data
+Default
+
+
+#Build an lda algorithm that predicts whether a given borrower
+#will default on their loan.
+
+
+#Think carefully about how to set your threshold value for choosing classification
+#Evaluate how "good" your model is at these different values and decide which is "best".
+
+
+
+### Class Notes 10/6/21
+library(MASS)
+library(ISLR)
+library(tidyverse)
+
+
+lda.default <- lda(default ~ balance + income, data = Default)
+
+#Let's start by looking just at income
+
+Default %>%
+  ggplot() +
+  geom_point(aes(x = income, y = 0, color = default),
+             alpha = 0.3)
+#Let's plot the density functions
+Default %>%
+  ggplot() +
+  geom_density(aes(x = income, fill = default),
+             alpha = 0.3)
+
+#Let's look at balance
+
+Default %>%
+  ggplot() +
+  geom_point(aes(x = balance, y = 0, color = default),
+             alpha = 0.3)
+
+#Let's plot the density functions
+Default %>%
+  ggplot() +
+  geom_density(aes(x = balance, fill = default),
+               alpha = 0.3)
+
+#Let's plot both balance and income simultaneously
+Default %>%
+  ggplot() +
+  geom_point(aes(x = income, y = balance, color = default))
+
+
+predictions <- predict(lda.default, Default)
+
+Default.new <- Default %>%
+  mutate(preds = predictions$class)
+
+#Let's visualize what these predictions look like
+Default.new %>%
+  ggplot() +
+  geom_point(aes(x = income, y = balance, color = preds))
+
+
+#Let's make classifications based on a threshold of X
+#(Let's start predicting "Default" if P(Default | Income & Balance)) >= 0.2
+X <- 0.01
+
+Default.new <- Default %>%
+  mutate(preds = case_when(predictions$posterior[,2] >= X ~ "Yes",
+                           TRUE ~ "No"))
+
+#Let's visualize what these predictions look like
+Default.new %>%
+  ggplot() +
+  geom_point(aes(x = income, y = balance, color = preds))
+
+#How does our accuracy metric of choice change when the threshold changes?
+#How accurate is our LDA with threshold X?
+
+#Confusion Matrix
+table(Default.new$default, Default.new$preds)
+
+
+### Class Notes 10/13/21
+
+
+#Generate two numbers between 0 and 2 at random.
+x <- runif(10000, 0, 2)
+y <- runif(10000, 0, 2)
+
+random.data <- tibble(x, y)
+
+random.data.classifications <- random.data %>%
+  mutate(class = case_when((x-1)^2 + (y-1)^2 < 0.5 ~ 1,
+                           TRUE ~ 0))
+
+random.data %>%
+  mutate(class = case_when((x-1)^2 + (y-1)^2 < 0.5 ~ 1,
+                           TRUE ~ 0)) %>%
+  ggplot() +
+  geom_point(aes(x = x, y = y, color = factor(class)))
+
+
+#Let's build our first split in our decision tree
+random.data.classifications %>%
+  ggplot() +
+  geom_point(aes(x = x, y = y, color = factor(class))) +
+  geom_vline(xintercept = 1 + sqrt(0.5), size = 3)
+
+#Let's build our second split
+random.data.classifications %>%
+  ggplot() +
+  geom_point(aes(x = x, y = y, color = factor(class))) +
+  geom_vline(xintercept = 1 + sqrt(0.5), size = 3) +
+  geom_vline(xintercept = 1 - sqrt(0.5), size = 3)
+
+#
+library(rpart)
+library(rattle)
+
+#Let's build our decision tree
+
+tree1 <- rpart(factor(class) ~ x + y, data = random.data.classifications)
+
+#Let's visualize our tree!
+fancyRpartPlot(tree1, cex = 0.8)
+
+#Let's build a small tree instead
+tree.small <- rpart(factor(class) ~ x + y, 
+                    data = random.data.classifications,
+                    control = rpart.control(maxdepth = 2))
+
+fancyRpartPlot(tree.small)
+
+
+
+
+
+
+#Can we predict (multiclass) color?
+diamond.tree <- rpart(color ~ ., data = diamonds)
+fancyRpartPlot(diamond.tree)
+
+
+
+
+### Class Notes 10/15/21
+
+#Trees can overfit our data "easily"
+#(This tree will not work well when used in a real context)
+titanic <- read_csv("Titanic.csv")
+
+#First, a basic tree with all default values
+library(rpart)
+
+tree1 <- rpart(Survived ~ ., data = titanic)
+
+#Let's visualize our tree
+library(rattle)
+fancyRpartPlot(tree1)
+
+#Maybe we shouldn't use name
+tree2 <- rpart(Survived ~ . -Name, data = titanic)
+
+#Please don't build trees starting with all variables.
+#Instead, start from nothing and build up.
+tree3 <- rpart(factor(Survived) ~ factor(Pclass), data = titanic)
+fancyRpartPlot(tree3)
+
+#Let's add some more variables
+tree4 <- rpart(factor(Survived) ~ factor(Pclass) + Sex + Age + Fare, data = titanic)
+fancyRpartPlot(tree4)
+
+
+#Let's overfit!
+tree5 <- rpart(factor(Survived) ~ factor(Pclass) + Sex + Age + Fare, 
+               data = titanic,
+               control = rpart.control(minsplit = 2,
+                                       cp = 0.00000000001))
+fancyRpartPlot(tree5)
+
+
+#cp = sum(#missclassifications + lambda*#splits)
+
+#How well does this model perform?
+preds <- predict(tree5, titanic)
+
+preds.survived <- round(preds[,2], 0)
+
+#Confusion matrix
+table(preds.survived, titanic$Survived)
+
+
+#Let's do 2-fold cv
+#let's split our data in half
+train <- titanic[1:450, ]
+test <- titanic[451:891, ]
+
+#Try "all" combinations of minsplit and cp
+#Build a tree on the training set of data using these values
+#Test your tree on the test set.
+#Which combination of values yields the highest accuracy?
+
+tree.train.1 <- rpart(factor(Survived) ~ factor(Pclass) + Sex + Age + Fare, 
+                      data = train,
+                      control = rpart.control(minsplit = 20,
+                                              cp = 0.1))
+fancyRpartPlot(tree.train.1)
+
+
+
+### Class Notes 10/20/21
+
+
+## Pros
+#Easy to explain, especially compared to linear regression
+
+#Trees often better estimate true "f", especially when "f" is
+#related to human decisionmaking
+
+#Trees can be displayed graphically
+
+#Trees can handle any kind of variable (especially relevant
+#when our variable is categorical with many levels)
+
+
+##Cons
+
+# Trees are often high variance (small changes in our training data
+# can cause dramatic changes in our model f-hat)
+
+# Trees alone just aren't that accurate compared to more modern techniques
+
+
+
+##### Introducing "Bagging"
+
+#Let's pretend we have a new data set to build/test our model on
+#We're going to get this data set from our existing data set
+#through a process called bootstrapping
+
+#Bootstrapping: Let's sample our "new" data from our existing data
+#(We'll do this sampling with replacement.)
+
+
+#Let's work with our Titanic dataset to bootstrap a new sample of n = 10
+n <- 891
+
+
+titanic %>%
+  sample_n(n, replace = TRUE)
+
+
+#Bagging: build a single tree using our random resampling (bootstrap) of our data
+# do that a lot (~25 times).
+
+
+
+#If we bootstrap one time (take a sample of size n from a data set with n rows)
+#what proportion of our original observations, on average, will appear
+#in the bootstrap sample?
+
+
+unique.rows <- titanic %>%
+  sample_n(n, replace = TRUE) %>%
+  unique() %>%
+  nrow()
+
+unique.rows/nrow(titanic)
+
+
+### Class Notes 10/25/21
+
+
+#Bagging: Bootstrap AGGrigatING
+
+#Let's build a decision tree with a bootstrapped data set
+#Then, save that tree. (Weak learner)
+#Next, repeat the above process 25 (<- tuning parameter) times.
+#Finally, aggregate all 25 trees, each gets a vote, take the majority vote.
+
+
+#Let's split our data into training and test.
+training.data <- titanic[1:600, ]
+testing.data <- titanic[601:891, ]
+
+#1) Determine if bagging decision trees yields better accuracy
+# than just using a single decision tree built on all the data.
+
+#2) Determine if bagging kNN and LDA yields better accuracy
+# then either algorithm alone, built on the whole data set.
+
+
+### Class Notes 10/27/21
+
+mean(diamonds$price)
+
+diamonds %>%
+  sample_n(nrow(diamonds), replace = TRUE) %>%
+  summarize(mean = mean(price))
+
+
+#How does bagging work with regression?
+
+#build a linear model to predict diamond price from everything
+model1 <- lm(price ~., data = diamonds)
+summary(model1)
+
+bag1 <- lm(price ~., data = diamonds %>% sample_n(nrow(diamonds), replace = TRUE))
+summary(bag1)
+
+
+#Let's see that unlike linear regression where the coefficient (slope)
+#changes very little, our tree changes a lot
+
+tree1 <- rpart(price ~., data = diamonds %>% sample_n(nrow(diamonds), replace = TRUE))
+fancyRpartPlot(tree1)
+
+
+#### 11/1/21 ####
+
+
+
+# Compare a decision tree, bagging decision trees, and a random forest.
+# Use the same tuning parameters for all, except number of trees
+
+#1) How can we estimate the accuracy of our model W/O doing LOOCV?
+# ( but assuming we want to do better than a 70-30 test/training split)
+
+
+# says how long code takes to run
+system.time({rnorm(100000000)})
+
+
+# let's build a random forest model to predict diamond color
+system.time({
+  rf1 <- randomForest(color~ ., data = diamonds)
+})
+
+
+# Introducing, Out-of-Bag (OOB) error! <- won't require us to rebuild our forest, instead it makes us re-evaluate the trees
+titanic.clean <- read_csv("Titanic.csv") %>% 
+  select(Survived, Pclass, Sex, Age) %>% 
+  na.omit() %>% 
+  mutate(Survived = factor(Survived),
+         Pclass = factor(Pclass))
+
+rf.titanic <- randomForest(Survived ~Pclass + Sex + Age,
+                          data = titanic.clean)
+
+# let's instead calculate OOB error to assess our model
+rf.titanic <- randomForest(Survived ~Pclass + Sex + Age,
+             data = titanic.clean,
+             oob = TRUE,
+             importance = TRUE)
+
+
+# but what if i want to know how important each variable is ? 
+  # we could take on variable out at a time and re-run to see which one makes the biggest difference
+    ## however, this would take too long and wouldn't be great because the training data changes
+
+rf$importance
+
+# now, let's check out variable importance
+varImpPlot(rf.titanic)
+
+
+
+
+#### Class Notes ###
+
+library(caret)
+
+titanic <- read_csv("titanic.csv")
+
+# let's compare train() to randomForest()
+rf.caret.1 <- train(Survived ~Pclass + Sex + Age,
+                    data = titanic.clean,
+                    method = "rf")
+
+# 'mtry' is when I'm building my forest, at each split at each tree, how many variables 
+#          should be considered
+
+# 'Kappa' is how much better is the model than random chance (0 means model doesn't do any better
+#           than chance)
+
+rf.titanic <- randomForest(Survived ~Pclass + Sex + Age,
+                           data = titanic.clean,
+                           importance = TRUE)
+
+
+# let's try specific tuning parameter values (i.e. like choosing a specific k value)
+rf.caret.2 <- train(Survived ~Pclass + Sex + Age,
+                    data = titanic.clean,
+                    method = "rf",
+                    tuneGrid = data.frame(mtry = c(1,2)))
+
+# let's compare train() to lda()  <- THIS EXAMPLE IS NOT GOOD, because the data is mostly not numerical
+rf.caret.1.lda <- train(Survived ~Pclass + Sex + Age,
+                        data = titanic.clean,
+                        method = "lda")
+
+# let's make a prediction with our trained model
+predict(rf.caret.1.lda,
+        data.frame(Pclass = factor(1), Sex = "female", Age = 6))
+
+# where do my accuracy metrics come from?
+rf.caret.1.lda <- train(Survived ~Pclass + Sex + Age,
+                        data = titanic.clean,
+                        method = "lda",
+                        trControl = trainControl(method = "LOOCV"))
+
+
+### parallel processing in the textbook will speed up the code by 8x-ish
+
+
+################# categorical or numerical data can be used for random Forest algorithms
+
+
+#class notes 11/5#
+
+obama.tweets <- read_csv("Tweets-BarackObama.csv")
+trump.tweets <- read_csv("realdonaldtrump.csv")
+
+# goal: predict if randomly selected tweet is written by obama or trump?
+
+# alternate goal: if we can do the above... why?
+# Count up words per tweet by Obama
+library(tidytext)
+
+obama.words <- obama.tweets %>% 
+  dplyr::select(`Tweet-text`, `Tweet Link`) %>% 
+  unnest_tokens(input = "Tweet-text", output = "word") %>% 
+  anti_join(stop_words) %>% 
+  count(`Tweet Link`, word) %>% 
+  mutate(who.pres = "Obama")
+
+# Count up words per tweet by Trump
+trump.words <- trump.tweets %>% 
+  dplyr::select(`content`, `id`) %>% 
+  unnest_tokens(input = "content", output = "word") %>% 
+  anti_join(stop_words) %>% 
+  count(id, word) %>% 
+  mutate(who.pres = "Trump")
+
+# Full data set
+# change obama tweet link to id
+colnames(obama.words)[1] <- "id"
+both.words <- rbind(obama.words, trump.words)
+
+# when graphing like columns to be the different values and row as one person/thing
+# when machine learning like columns to be one person/thing and rows as different values
+# this produces tooo many columns so let's trim words with less than 20 uses total.
+good.words <- both.words %>% 
+  group_by(word) %>% 
+  summarise(sum = sum(n)) %>% 
+  filter(sum >= 20)
+
+final.data <- both.words %>% 
+  filter(word %in% good.words$word) %>% 
+  pivot_wider(names_from = word,
+              values_from = n,
+              names_repair = "unique") %>% 
+  replace(is.na(.), 0)
+
+#let's build our random forest
+
+library(caret)
+
+#don't run this, will crash R bc data set too large
+#rf1 <- train(who.pres ~ ., data = final.data, method = "ranger")
+
+rf1 <- train(who.pres ~ justice + vote + sad + maga, 
+             data = final.data[random.rows, ], 
+             method = "ranger")
+
+final.data %>% 
+  count(who.pres)
+
+# why we can't use a rf in this situation (this data set): 
+# 
+
+
+
+
+#### class Notes 11/8/21 ####
+
+# everything we've done so far has been "supervised learning"
+# Supervised Learning: we have some variables X1, X2, ... as predictors for some Y variable (response)
+
+# Unsupervised Learning: We have some data and no response variable
+# no variable to predict or model, but we want to know more about the underlying structure or relationships in our data
+
+
+# k-means clustering (not related to knn)
+iris.subset <- iris %>%  
+  select(Petal.Width, Petal.Length)
+
+# Goal: understand more about the relationships between petal width and length,
+# and see if there are some flowers that are similar and some that are quite different
+
+iris.subset %>% 
+  ggplot() + 
+  geom_point(aes(x = Petal.Width, y = Petal.Length),
+             size = 3)
+
+# to start, we choose a K
+# let's choose k = 3
+
+## Step 1: randomly assign each point to one of K = 3 clusters
+set.seed(1)
+random.cluster <- sample(1:3, size = nrow(iris.subset), replace = TRUE)
+
+iris.cluster.data <- iris.subset %>% 
+  mutate(cluster = random.cluster)
+
+# graph my data
+iris.cluster.data %>% 
+  ggplot() +
+  geom_point(aes(x = Petal.Width, y = Petal.Length, color = factor(cluster)),
+             size = 3)
+
+## Step 2: calculate the centroid of each cluster
+centroid.data <- iris.cluster.data %>% 
+  group_by(cluster) %>% 
+  summarize(centroidX = mean(Petal.Width),
+            centroidY = mean(Petal.Length))
+
+# visualize centroids
+iris.cluster.data %>% 
+  ggplot() + 
+  geom_point(aes(x = Petal.Width, y = Petal.Length, color = factor(cluster)),
+             size = 3) +
+  geom_point(data = centroid.data,
+             mapping = aes(x = centroidX, y = centroidY, color = factor(cluster)),
+             size = 20)
+
+## step 3: assign each data value to the nearest centroid from 2). That is its new cluster
+
+final.data <- iris.cluster.data %>% 
+  select(-cluster) %>% 
+  mutate(id = row_number(),
+         dist1 = sqrt((Petal.Width - centroid.data$centroidX[1])^2 + (Petal.Length - centroid.data$centroidY[1])^2),
+         dist2 = sqrt((Petal.Width - centroid.data$centroidX[2])^2 + (Petal.Length - centroid.data$centroidY[2])^2),
+         dist3 = sqrt((Petal.Width - centroid.data$centroidX[3])^2 + (Petal.Length - centroid.data$centroidY[3])^2)) %>% 
+  pivot_longer(c(dist1, dist2, dist3),
+               names_to = "cluster",
+               values_to = "distance") %>% 
+  arrange(distance) %>% 
+  group_by(id) %>% 
+  slice(1)
+
+final.data %>% 
+  ggplot() +
+  geom_point(aes(x = Petal.Width, y = Petal.Length, color = factor(cluster)),
+             size = 3)
+  
+
+
+
+#### 11/20 ####
+
+library(spotifyr)
+
+
+
+#### 11/12 ####
+iris.subset <- iris %>% 
+  select(-Species)
+
+km1 <- kmeans(iris.subset, centers = 2)
+
+# check avg values of each cluster
+km1$centers
+
+# how compact is each cluster? (how close are my points actually within each cluster?)
+km1$withinss  # this tells us that the withinss is much larger in cluster 1 than it is in cluster 2
+
+iris.subset %>% 
+  mutate(cluster = km1$cluster) %>% 
+  ggplot() + 
+  geom_point(aes(x = Petal.Width, y = Petal.Length, color = factor(cluster)))
+
+# total compactness
+km1$tot.withinss
+
+# let's check our total within ss for k = 1
+km.1 <- kmeans(iris.subset, centers = 10) ## we see that if we set centers = 149 (the total number of points), 
+                                          ## the total compactness we calculate in line 954 is equal to 0 because each point
+                                          ## has it's own cluster
+
+# total compactness 
+km.1$tot.withinss
+
+# let's write a loop ot test all values of k to fin the "best" k
+
+ss <- NULL
+
+for(k in 1:50) {
+  km <- kmeans(iris.subset, centers = k)
+  ss[k] <- km$tot.withinss
+}
+
+plot(ss)
+# we want to find the spot on the graph where we don't have too many clusters, but high compactness 
+
+
+## for kmeans, can't have categorical variables
+
+
+#### NEED TO SCALE THE DATAAAAAAAA
+
+spotify.data <- read_csv("top50.csv")
+spotify.subset.no.na <- spotify.data %>% 
+  na.omit()
+spotify.subset <- spotify.data %>% 
+  select(-Popularity, -Track.Name, -Artist.Name, -Genre)
+
+km1 <- kmeans(spotify.subset, centers = 5)
+
+ss <- NULL
+
+for(k in 1:49) {
+  km <- kmeans(spotify.subset, centers = k)
+  ss[k] <- km$tot.withinss
+}
+
+plot(ss)
+
+km1$centers
+
+
+spotify.subset %>% 
+  mutate(cluster = km1$cluster) %>% 
+  ggplot() + 
+  geom_point(aes(x = Loudness..dB.., y = Danceability, color = factor(cluster)))
+
+
+
+#### 11/15 ####
+
+## Hierarchical Clustering
+  # closest pairings 'fuse' to one distance (become one data point), on the y axis
+  # process is repeated until there's only one cluster left
+  # from this we build a dendrogram to see the closeness of points
+    # (closesness of points on x axis means nothing)
+    # (what matters is how close points are on the y axis)
+
+soccer <- read_csv("soccer_stats.csv")
+
+# Q: which of these players are similar, which aren't, and why?
+
+soccer.subset <- soccer %>% 
+  filter(name %in% c("Wayne_Rooney",
+                     "Harry_Kane",
+                     "Joe_Hart",
+                     "David_de Gea",
+                     "Jamie_Vardy",
+                     "Jonjo_Shelvey")) %>% 
+  group_by(name) %>% 
+  select(attempted_passes,
+         goals_conceded,
+         goals_scored,
+         assists,
+         red_cards) %>% 
+  summarise_all(mean) # take the mean of every column/variable (within each name)
+
+# let's scale our data
+soccer.scaled <- soccer.subset %>% 
+  select(-name) %>% 
+  scale()
+
+# let's do hierarchical clustering!
+soccer.distances <- dist(soccer.scaled) # finds euclidian dist between all points
+
+hc1 <- hclust(soccer.distances)
+
+# let's visualize our dendrogram
+plot(hc1)
+# lower height demonstrates higher correlation (so in this example 1 and 4 are the most similar)
+
+
+
+#### class 11/17/21 ####
+
+hc1 %>%
+  as.dendrogram() %>% 
+  place_labels(soccer.subset$name) %>% 
+  plot()
+
+# suppose we want to form clusters
+cutree(hc1, k = 3)  # k tells cutree how many clusters to split the tree into
+  
+hc1 %>% 
+  as.dendrogram() %>% 
+  place_labels(soccer.subset$name) %>% 
+  color_labels(k = 3) %>% 
+  color_branches(k = 3) %>% 
+  set("branches_lwd", 5) %>% 
+  plot()
+
+# let's look at all the players
+selected.stats <- soccer %>% 
+  select(name, fouls, red_cards, goals_scored, assists, own_goals) %>% 
+  group_by(name) %>% 
+  summarize_all(mean)
+
+scaled.selected.stats <- selected.stats %>% 
+  select(-name) %>% 
+  scale() %>% 
+  dist()
+
+big.cluster <- hclust(scaled.selected.stats)
+
+big.cluster %>% 
+  plot()
+
+# let's investigate outlier player 548
+selected.stats[548, ]
+
+
+
+
+
+# pretend you've received $10billion to give aid to foreign countries
+country.data <- read_csv("Country_data.csv")
+
+country.data.subset <- country.data %>% 
+  select(-child_mort, -exports, -imports, -inflation, -total_fer)
+
+country.data.subset.scaled <- country.data.subset %>% 
+  select(-country) %>% 
+  scale()
+
+# let's do hierarchical clustering!
+country.distances <- dist(country.data.subset.scaled) # finds euclidian dist between all points
+
+country.hclust <- hclust(country.distances)
+
+# let's visualize our dendrogram
+plot(country.hclust)
+# lower height demonstrates higher correlation (so in this example 1 and 4 are the most similar)
+country.hclust %>% 
+  as.dendrogram() %>% 
+  place_labels(country.data.subset$country) %>% 
+  color_labels(k = 15) %>% 
+  color_branches(k = 15) %>% 
+  set("branches_lwd", 5) %>% 
+  plot()
+
+# take out health and gdp
+country.wellbeing <- country.data.subset %>% 
+  select(-health, -gdpp)
+
+# scale
+country.wellbeing.scaled <- country.wellbeing %>% 
+  select(-country) %>% 
+  scale()
+
+# let's do hierarchical clustering!
+country.wellbeing.distances <- dist(country.data.subset.scaled) # finds euclidian dist between all points
+
+country.hclust <- hclust(country.distances)
+country.wellbeing.hclust <- hclust(country.wellbeing.scaled)
+
+
+
+
+
+
+#### 11/29 ####
+
+plot(USArrests$Assault, USArrests$Murder)
+
+# build my PCA model with Assault and Murder
+pca1 <- prcomp(USArrests %>% 
+                 as_tibble() %>% 
+                 select(Assault, Murder) %>% 
+                 scale())
+
+# let's make sense of the PCA output
+pca1
+
+
+
+
+# starbucks
+
+library(openintro)
+
+starbucks
+
+# our goal is to categorize items at Starbucks (and perhaps use them to predict how many calories they'll have)
+
+starbucks.pca <- prcomp(starbucks %>% 
+                          select(fat, carb, fiber, protein) %>% 
+                          scale())
+
+starbucks.with.pc.vals <- starbucks %>% 
+  mutate(pc1 = starbucks.pca$x[,1],
+         pc2 = starbucks.pca$x[,2])
+
+# let's find the items highest in "pc1"
+starbucks.with.pc.vals %>% 
+  arrange(-pc1)
+
+# let's find the items highest in "pc2"
+starbucks.with.pc.vals %>% 
+  arrange(-pc2)
+
+
+#### Notes 12/6 ####
+
+# How do I deal with missing (or corrupt, or bad, or...) values?
+
+# simplest approach? 
+  # substitute missing variable's mean
+  
+# more complex, better, approach?
+  # use statistical learning to predict missing values
+
+# MICE = Multivariate Imputation by Chained Equations
+  # IMPORTANT NOTE**** this approach assumes missing values appear at random
+
+library(mice)
+
+# Step 1: do simple imputation (take the mean of each variable and replace missing values with this mean) <- will end up being a placeholder
+# Step 2: select "first" variable

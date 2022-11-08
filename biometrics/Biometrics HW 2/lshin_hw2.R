@@ -1,0 +1,127 @@
+# Lucas Shin
+# Biometrics 
+# HW 2
+
+library(tidyverse)
+library(ggplot2)
+library("png")
+
+# 1
+faces <- matrix(nrow = 3600, 
+                         ncol = 0)
+
+for (i in 1:180) {
+   photo = paste(toString(i), 
+                 "_0.png", 
+                 sep = "")
+   image = readPNG(paste("/Users/lucasshin/Desktop/Biometrics/Biometrics HW 2/trainingfaces2/",
+                         photo, sep = ""))
+   vecImage = as.vector(image)
+   faces <- cbind(faces, vecImage)
+}
+
+rowMeans <- rowMeans(faces)
+
+# iterates through matrix and subtracts each row mean from each element in that row
+for (j in 1:nrow(faces)) {
+   for (k in 1:ncol(faces)) {
+      faces[j,k] <- faces[j,k] - rowMeans[j]
+   }
+}
+
+transposedMatrix <- t(faces)
+covMatrix <- faces %*% transposedMatrix
+
+ev <- eigen(covMatrix)
+eigenVec <- ev$vectors
+eigenVal <- ev$values
+
+# to find weighted sum using all eigenvectors
+inputImage <- faces[,1]
+weight1 <- abs(t(eigenVec) %*% inputImage)
+weight1Sum <- colSums(weight1)
+
+# to find weighted sum using a subset (first 10) of the eigenvectors
+evSubset <- eigenVec[,1:10]
+weightSub <- abs(t(evSubset) %*% inputImage)
+weightSubSum <- colSums(weight)
+
+
+
+
+
+gen1a <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW 2/testingfaces/s26d10.png"
+gen1b <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW 2/testingfaces/s26d7.png"
+
+gen2a <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW 2/testingfaces/s24d9.png"
+gen2b <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW 2/testingfaces/s24d1.png"
+
+gen3a <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW 2/testingfaces/s17d2.png"
+gen3b <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW 2/testingfaces/s17d8.png"
+
+imp1a <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW 2/testingfaces/s13d9.png"
+imp1b <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW 2/testingfaces/s12d10.png"
+
+imp2a <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW 2/testingfaces/s05d3.png"
+imp2b <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW 2/testingfaces/s02d4.png"
+
+imp3a <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW 2/testingfaces/s25d1.png"
+imp3b <- "/Users/lucasshin/Desktop/Biometrics/Biometrics HW 2/testingfaces/s13d7.png"
+
+testing <- c(gen1a, gen1b, gen2a, gen2b, gen3a, gen3b, imp1a, imp1b, imp2a, imp2b, imp3a, imp3b)
+
+testfaces <- matrix(nrow = 14400, ncol = 0)
+
+for (h in 1:length(testing)) {
+   image = testing[h]
+   vecImage = as.vector(readPNG(image))
+   testfaces <- cbind(testfaces, vecImage)
+}
+
+
+rowMeans <- rowMeans(testfaces)
+
+# iterates through matrix and subtracts each row mean from each element in that row
+for (j in 1:nrow(testfaces)) {
+   for (k in 1:ncol(testfaces)) {
+      testfaces[j,k] <- testfaces[j,k] - rowMeans[j]
+   }
+}
+
+## comparisons
+
+input1 <- testfaces[,1]
+input2 <- testfaces[,2]
+weight1 <- t(evSubset) %*% input1
+weight2 <- t(evSubset) %*% input2
+distance1 <- weight1-weight2
+
+input3 <- testfaces[,3]
+input4 <- testfaces[,4]
+weight3 <- t(evSubset) %*% input3
+weight4 <- t(evSubset) %*% input4
+distance2 <- weight3-weight4
+
+input5 <- testfaces[,5]
+input6 <- testfaces[,6]
+weight5 <- t(evSubset) %*% input5
+weight6 <- t(evSubset) %*% input6
+distance3 <- weight5-weight6
+
+input7 <- testfaces[,7]
+input8 <- testfaces[,8]
+weight7 <- t(evSubset) %*% input7
+weight8 <- t(evSubset) %*% input8
+distance4 <- weight7-weight8
+
+input9 <- testfaces[,9]
+input10 <- testfaces[,10]
+weight9 <- t(evSubset) %*% input9
+weight10 <- t(evSubset) %*% input10
+distance5 <- weight9-weight10
+
+input11 <- testfaces[,11]
+input12 <- testfaces[,12]
+weight11 <- t(evSubset) %*% input11
+weight12 <- t(evSubset) %*% input12
+distance6 <- weight11-weight12

@@ -1,0 +1,501 @@
+---
+title: "Final Project (Before)"
+author: "Lucas Shin, Cody Kim, Kaela Finegan"
+date: "11/21/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message= FALSE, warning=FALSE)
+
+library(tidyverse)
+library(FNN)
+```
+
+Every year, NBA 2k (the video game) player ratings are announced prior to the start of the NBA season. Some players are happy with their ratings and some do not feel that their ratings accurately represent their skills on the court. Since NBA 2K generates the player ratings before the start of each season, we will use each player's previous season's stats to predict their rating in the video game (for example, NBA 2K21 ratings are joined with player stats from the NBA 2019-20 season). We assume that there is some level of subjectivity in the player ratings (based on each player's popularity and overall media attention), so our aim is to construct the best model possible to make predictions based on not only their individual on court stats (e.g. points, 3-point-makes, steals) but also their metrics such as age, win.percentage, and triple doubles.
+
+Our research question: Can you predict a player's NBA 2k rating for a season using their previous season's statistics?
+
+```{r}
+nba.data <- read_csv("nba_rankings_2014-2020.csv") %>% 
+   select(-X1, -TEAM, -OREB, -DREB, -FP, -PF, -L, -DD2, -TD3) %>% 
+   mutate(win.percentage = W/GP) %>% 
+   select(-W)
+
+colnames(nba.data)[22] <- "rating"
+
+nba.data.before.with.names <- nba.data %>% 
+   filter(SEASON == "2017-18") %>% 
+   select(-SEASON)
+
+nba.data.before <- nba.data %>% 
+   filter(SEASON == "2017-18") %>% 
+   select(-SEASON, -PLAYER)
+
+nba.data.after <- nba.data %>% 
+   filter(SEASON == "2019-20") %>% 
+   select(-SEASON, -PLAYER)
+
+# rename columns before
+colnames(nba.data.before)[7] <- 'FG.percent'
+colnames(nba.data.before)[8] <- 'Threes.Made'
+colnames(nba.data.before)[9] <- 'Threes.Attempted'
+colnames(nba.data.before)[10] <- 'Threes.percent'
+colnames(nba.data.before)[13] <- 'FT.percent'
+colnames(nba.data.before)[19] <- 'Plus.Minus'
+
+# rename columns after
+colnames(nba.data.after)[7] <- 'FG.percent'
+colnames(nba.data.after)[8] <- 'Threes.Made'
+colnames(nba.data.after)[9] <- 'Threes.Attempted'
+colnames(nba.data.after)[10] <- 'Threes.percent'
+colnames(nba.data.after)[13] <- 'FT.percent'
+colnames(nba.data.after)[19] <- 'Plus.Minus'
+```
+
+We will split our data set into a "before" and "after". We will use statistics from the 2017-2018 season as the before data and use the data from the 2019-2020 season as the after data. 
+
+Our response variable will be the NBA 2k rating (which we named "rating"), which ranges from 65 to 99.
+
+Let's take a look at our data!
+
+```{r}
+print(colMeans(nba.data.before))
+```
+
+Above are the average values for each of our statistics to give an overview of typical values found in each column.
+
+```{r}
+nba.data.before %>% 
+   ggplot(aes(x = win.percentage,
+             y = rating)) +
+   geom_point()
+```
+
+The above graph shows that win.percentage has a low positive correlation with 2k rating. This makes sense because players can be on 
+winning teams without contributing much statistically (ex: Zhou Qi was on the 65-17 Houston Rockets team, but he only averaged 6.9
+minutes a game and contributed minimal stats in those minutes). 
+
+```{r}
+nba.data.before %>% 
+   ggplot(aes(x = `Plus.Minus`,
+             y = rating)) +
+   geom_point()
+```
+
+The above graph shows that +/- has a low to moderate positive correlation with 2k rating. Some players with positive impacts on the
+court did not have higher ratings. An example of this would be Luc Mbah a Moute of the Houston Rockets, who did not contribute much statistically (which could explain his average rating of 75) but had a higher +/- than most. 
+
+```{r}
+nba.data.before %>% 
+   ggplot(aes(x = PTS,
+             y = rating)) +
+   geom_point()
+```
+
+The above graph shows a strong positive correlation between points per game and rating. This makes sense because, generally, a player
+who scores more is a more skilled player. 
+
+From these exploratory graphs, it seems that the most individual statistics (e.g. points) most directly lead to higher ratings, and less individual statistics (e.g. win percentage and +/-) have lower correlations with player rating.
+
+Our response variable of interest is "rating".
+
+
+Now we will use a knn-regression model to try to predict ratings based on our players' statistics. We considered using an LDA model, but the LDA model works best for predicting categorical variables, not for continuous variables like rating (which we are predicting). We will use the same metrics as before, and begin by scaling all variables that do not only have values between 0 and 1. This will put each variable on the same scale so we can treat each variable equally. We will do this using the equation: 
+
+                        scaled.column <- (x - min(x's column))/(max(x's column)-min(x's column))
+                        
+This equation was taken from "https://towardsdatascience.com/k-nearest-neighbors-algorithm-with-examples-in-r-simply-explained-knn-1f2c88da405c". The normalization code in the next chunk was also taken from this website.
+
+We will keep the rating column as is (without scaling) because this will make it is our response variable. Also this will make it easier to compare to our second supervised learning model which may not use scaling.
+```{r}
+# create a scaling function
+scale1 <-function(x) { 
+  (x-min(x))/(max(x)-min(x))   
+}
+
+# Scale all columns besides rating
+ratings <-nba.data.before[20]
+nba.data.before2 <- nba.data.before %>% 
+  dplyr::select(-rating)
+scaled.nba.data.before <- as.data.frame(lapply(nba.data.before2[,c(1:20)], scale1)) %>% 
+  mutate(ratings)
+
+```
+
+We will calculate the best k value for our knn model below.
+
+```{r}
+
+# Make a vector to capture predictions for each k
+pred.vector <- NULL
+error.vector <- NULL
+
+for(k in 1:50){
+  for(row in 1:nrow(scaled.nba.data.before)){
+    
+    # Create test data
+    test.data <- scaled.nba.data.before[row, ] %>%
+      dplyr::select(-rating)
+    
+    # Create training data
+    training.data <- scaled.nba.data.before[-row, ] 
+    
+    training.data.no.rating <- training.data %>%
+      dplyr::select(-rating)
+    
+    # Regression
+    model1.reg <- knn.reg(train = training.data.no.rating,
+                          test = test.data,
+                          k = k,
+                          y = training.data$rating)
+    
+    pred.vector[row] <- model1.reg$pred - (scaled.nba.data.before[row, ] %>% pull(rating))
+
+  }
+  error.vector[k] <- (mean(pred.vector^2))^(1/2)
+}
+```
+
+We chose to use a regression model because the variable we are trying to predict, rating, is a quantitative continuous variable, not a categorical one. We chose to square the predictions, take the mean and take the square root in order to get an error in the same form as RMSE for random forest, which will be useful for comparison later. 
+
+```{r}
+# Check the error at each k
+pred.data <- data.frame(error.vector,
+                        k = 1:50)
+
+pred.data %>%
+  ggplot(aes(x = k,
+             y = error.vector)) +
+  geom_point()
+
+# find the minimum error value from the error.vector previously calculated
+min.error <- min(error.vector)
+# find the optimal k that is associated with the min.error
+optimal.k <- match(min.error, error.vector)
+
+print(paste0("Minimum Error: ", min.error))
+print(paste0("Optimal k Value: ", optimal.k))
+```
+
+Printed above are the optimal k value (k = 11) along with its error value at that k (~2.76). A k value of 11 means that using the nearest 11 other players best predicts the rating of a given player, with an average prediction error of 2.76 rating points. Now we will use this optimal k to visualize the success of the model plotted against PTS and Plus.Minus. This 2D graph will use the fixed medians of all of the other variables and vary PTS and Plus.Minus. We chose to vary PTS because, as stated previously, players who score more points are usually more talented players. We chose to vary Plus.Minus because it is a statistic that can be applied to all players while some statistics favor certain positions (rebounds favor forwards and centers, assists favor point guards).
+
+```{r}
+ggplot(mapping = aes(x = PTS, y = Plus.Minus)) + 
+        geom_point(size = .7, data = scaled.nba.data.before, aes(color = rating))
+```
+
+Below is a graph of the distribution of ratings.
+
+```{r}
+
+scaled.nba.data.before %>% 
+  ggplot(mapping = aes(x = rating)) +
+        geom_density(size = .7, data = scaled.nba.data.before, aes(color = rating))
+```
+
+The majority of the ratings are between 70 and 80. Now lets make a graph of the predicted ratings for each combination of PTS and Plus.Minus.
+
+```{r}
+
+#Let's make a grid of all possible combinations of PTS and Plus.Minus
+grid <- expand.grid(PTS = seq(from = 0, to = 1, by = .01),
+                    Plus.Minus = seq(from = 0, to = 1, by = .01))
+
+grid2 <- grid %>%
+  group_by(PTS, Plus.Minus)
+
+medians <- scaled.nba.data.before %>%
+  select(-rating, -PTS, -Plus.Minus) %>%
+  summarize_all(median)
+
+grid3 <- grid2 %>% 
+  group_by(PTS, Plus.Minus) %>%
+  mutate(medians)
+
+prediction = knn.reg(train = scaled.nba.data.before %>% select(-rating), 
+                     test = grid3,
+                     k = 11,
+                     y = scaled.nba.data.before$rating)
+
+grid <- grid %>%
+  cbind(prediction$pred) 
+
+colnames(grid) <- c("PTS", "Plus.Minus", "prediction")
+
+grid %>%
+  ggplot() +
+  geom_point(size = 5, mapping = aes(x = PTS, y = Plus.Minus, color = prediction)) +
+  theme_bw()
+```
+
+As shown above, when PTS and Plus.Minus are high, the NBA 2k ratings are high, which is what one would expect. In general, when PTS increase, the predicted rating tends to increase (no matter what the Plus.Minus). The same goes for increasing the Plus.Minus. Looking at the graph, it looks like Plus.Minus tends to raise the predicted rating a bit more than an increase in PTS does. We know this because the  color gradient changes at a faster rate along the y axis (Plus.Minus) than the color gradient changes along the x axis (PTS). This is what we would expect, as we explained earlier in the exploratory graph where we plotted rating against Plus.Minus.
+
+Initially we found it odd the predicted ratings were not higher than 78, however it makes sense that the predictions are not above 78. Since all other variables are fixed at their medians, it is not possible to get a rating above 78 by solely varying PTS and Plus.Minus. 
+
+
+We will now construct a random forest model using the same data set (nba.data.before). Random forests can be used to predict continuous variables (e.g. player rating) and perform best when supplied with a large number of unique metrics that it can make splits on. A random forest will split our variables and display what combinations of age, games played (GP), minutes per game (MIN), points per game (PTS), field goals made per game (FGM),field goals attempted per game (FGA), 3 pointers made per game (Three.Made), 3 pointers attempted per game (Threes.Attempted), three point percentage (Threes.percent), free-throws made per game (FTM), free-throws attempted per game (FTA), free-throw percentage (FT.percent), rebounds per game (REB), assists per game (AST), turnovers per game (TOV), steals per game (STL), blocks per game (BLK), overall plus-minus (Plus.Minus), and win percentage lead to higher NBA 2k player ratings.
+
+Our models' efficacy can be quantified based on how low the error term is. An error rating of 0 means that our model perfectly predicts player ratings using the previous season's statistics.
+
+```{r}
+library(caret)
+library(rpart)
+library(ipred)
+library(randomForest)
+```
+
+```{r, cache = TRUE}
+set.seed(3)
+# train is from caret
+rf.caret.1 <- train(rating~ ., 
+                    data = nba.data.before,
+                    method = "rf",
+                    tuneGrid = data.frame(mtry = c(1, 2, 3)))
+print(rf.caret.1)
+```
+
+This random forest uses a tune grid so that it produces the RSME for mtrys 1, 2 and 3. We can see that for mtry = 3 produced the best random forest model because it had the lowest RMSE value of 2.594898.
+
+```{r, cache = TRUE}
+set.seed(1)
+# RandomForest
+rf2 <- randomForest(rating~ ., 
+                    data = nba.data.before)
+print(rf2)
+```
+
+This random forest did not do very well since it only explains 81.11% of the variance. 
+
+Of our two models (knn and random forest), the error for our knn was 2.763 and the error for our best random forest was 2.595. Since our best random forest (rf.caret.1) produced a smaller error, this is our best model to answer our research question. 
+
+Given how large a range of possible ratings there are (62 to 98), both models are useful after optimization because the average errors are low. That means each predicted rating is only on average ~2.5 points off from the actual rating. 
+
+The 2017-2018 season has all the same statistics as the 2018-2019 data, and because these seasons are also only one year apart, the play style, overall ability of the players and distribution of each statistic should remain relatively constant. We believe our model will be successful on seasons after 2018 assuming NBA 2k continues to calculate ratings in the same manner (similar weightings) and based on our assumption that the level/style of play and statistics will remain relatively constant. Since we trained our data on one season (2017-2018) and tested on the following season's rating, our data would transfer over well to predict the ratings of players for the 2018-19 season. 
+
+
+
+-----------------------------------------------------------------------------------
+
+AFTER SECTION
+
+We will test the efficacy of our two before models on our after data. We will start with our knn model. As before, we must first scale our data before using the knn model. We will first scale the after data using the before data scale. Then we will scale the after data using the after data scale. We decided to test both because outliers in any of the statistical categories (either in the before or after data) could have affected the scaling of the data and thus the efficacy of the model.
+
+```{r, cache = TRUE}
+# create a scaling function
+scale1 <-function(x) { 
+  (x-min(x))/(max(x)-min(x))   
+}
+
+# Scale all columns besides rating
+# scale using the after data
+ratings <-nba.data.after[20]
+nba.data.after2 <- nba.data.after %>% 
+  dplyr::select(-rating)
+scaled.nba.data.after.after <- as.data.frame(lapply(nba.data.after2[,c(1:20)], scale1)) %>% 
+  mutate(ratings)
+
+# scale using the before data 
+ratings <-nba.data.after[20]
+nba.data.before2 <- nba.data.before %>% 
+  dplyr::select(-rating)
+
+nba.after2.scaled <- nba.data.after2
+for(i in 1:20){
+  min <- min(nba.data.before2[, i])
+  max <- max(nba.data.before2[, i])
+  nba.after2.scaled[, i] <- (nba.data.after2[, i] - min) / (max - min)
+}
+nba.after2.scaled <- nba.after2.scaled %>% mutate(ratings)
+
+```
+
+Now we will run our knn model from the "before" section on our two new, scaled, data sets. We will use k=11, since that was our optimal k when we tested on our "before" data. 
+
+First, we will test on our data that was scaled with the "after" data.
+
+```{r, cache = TRUE}
+# Make a vector to capture predictions for each k
+pred.vector <- NULL
+error.vector <- NULL
+
+k <- 11
+
+for(row in 1:nrow(scaled.nba.data.after.after)){
+  
+  # Create test data
+  test.data <- scaled.nba.data.after.after[row, ] %>%
+    dplyr::select(-rating)
+  
+  # Create training data
+  training.data <- scaled.nba.data.before[-row, ] 
+  
+  training.data.no.rating <- training.data %>%
+    dplyr::select(-rating)
+  
+  # Regression
+  model1.reg <- knn.reg(train = training.data.no.rating,
+                        test = test.data,
+                        k = k,
+                        y = training.data$rating)
+  
+  pred.vector[row] <- model1.reg$pred - (scaled.nba.data.after.after[row, ] %>% pull(rating))
+
+}
+error.vector[1] <- (mean(pred.vector^2))^(1/2)
+
+print(paste0("Minimum Error: ", min(error.vector)))
+```
+
+At k=11, our knn model had an RMSE value of ~2.2880.
+
+Next, we will test on our data that was scaled with the "before" data.
+
+```{r, cache = TRUE}
+# Make a vector to capture predictions for each k
+pred.vector <- NULL
+error.vector <- NULL
+
+k <- 11
+
+for(row in 1:nrow(nba.after2.scaled)){
+  
+  # Create test data
+  test.data <- nba.after2.scaled[row, ] %>%
+    dplyr::select(-rating)
+  
+  # Create training data
+  training.data <- scaled.nba.data.before[-row, ] 
+  
+  training.data.no.rating <- training.data %>%
+    dplyr::select(-rating)
+  
+  # Regression
+  model1.reg <- knn.reg(train = training.data.no.rating,
+                        test = test.data,
+                        k = k,
+                        y = training.data$rating)
+  
+  pred.vector[row] <- model1.reg$pred - (nba.after2.scaled[row, ] %>% pull(rating))
+
+}
+error.vector[1] <- (mean(pred.vector^2))^(1/2)
+
+print(paste0("Minimum Error: ", min(error.vector)))
+```
+
+At k=11, our knn model had an RMSE value of ~2.1331. Since 2.1331 is less than 2.2880, our knn model tested on our after data--scaled with our after data set--performed best (even better than it did with our "before" data).
+
+For comparison, we will now test our "after" data using our random forest model that was trained on our "before" data. Our best-performing random forest model on our "before" data was rf.caret.1 (with mtry =3), so we will use that to test our "after" data. Again, this model does not require scaling. We'll compare the predicted ratings (using rf.caret.1) with the actual ratings from our "after" data.
+
+```{r, cache = TRUE}
+set.seed(3)
+# train is from caret
+rf.caret.1 <- train(rating~ ., 
+                    data = nba.data.before,
+                    method = "rf",
+                    tuneGrid = data.frame(mtry = 3))
+
+predictions <- predict(rf.caret.1, nba.data.after)
+
+data.with.predictions <- nba.data.after %>% mutate(predictions = predictions)
+data.with.predictions %>% mutate(square.error = ((rating-predictions)^2)) %>% summarize(rmse = sqrt(mean(square.error)))
+```
+
+As shown above, our rf.caret.1 model again performed better than the knn model, resulting in an RMSE of ~1.9097. This model also performed better than when tested on our "before" data. Thus, our better-performing model from the “before” training data (rf.caret.1) was still the better-performing model when tested on the “after” data. 
+
+The small difference in error values could be attributed to chance, but we decided to dig further into the data to try to explain why our model might have performed better when tested on different data. We looked at the squared error for each of the players in our "after" data and arranged them from highest to lowest squared error. This is shown below.  
+
+```{r, cache = TRUE}
+data.with.predictions %>% mutate(square.error = ((rating-predictions)^2)) %>% arrange(-square.error)
+```
+
+We will focus on the top four rows printed above because these player's square.error value are much higher (relatively) than the rest. The first player (the one with the largest error in actual vs. predicted rating) had ratings that were about 11 points higher than predicted. Looking at their stats alone, their predicted ratings make sense. We believe that there is some subjectivity in each player's rating, especially when a popular player who has proven themselves is involved. Three out of the top four players with highest squared errors had less than 10 games played through the entire season, leading us to believe that season-ending injuries are a large reason for high error values. Season-ending injuries prohibit players from showcasing the best of their abilities, so we assume that the designers of NBA-2k keep these players' ratings high out of respect, even when their stats for the previous season are not great. 
+
+
+Last, we will rebuild our models using the combined data from our "before" and "after".
+
+```{r, cache = TRUE}
+combined.nba.data <- rbind(nba.data.before, nba.data.after)
+```
+
+We will first construct a knn model. Again, we will begin by scaling.
+
+```{r, cache = TRUE}
+# Scale all columns besides rating
+ratings <- combined.nba.data[20]
+combined.nba.data <- combined.nba.data %>% 
+  dplyr::select(-rating)
+scaled.combined.nba.data <- as.data.frame(lapply(combined.nba.data[,c(1:20)], scale1)) %>% 
+  mutate(ratings)
+```
+
+We will calculate the best k value for our knn model below.
+
+```{r, cache = TRUE}
+
+# Make a vector to capture predictions for each k
+pred.vector <- NULL
+error.vector <- NULL
+
+for(k in 1:50){
+  for(row in 1:nrow(scaled.combined.nba.data)){
+    
+    # Create test data
+    test.data <- scaled.combined.nba.data[row, ] %>%
+      dplyr::select(-rating)
+    
+    # Create training data
+    training.data <- scaled.combined.nba.data[-row, ] 
+    
+    training.data.no.rating <- training.data %>%
+      dplyr::select(-rating)
+    
+    # Regression
+    model1.reg <- knn.reg(train = training.data.no.rating,
+                          test = test.data,
+                          k = k,
+                          y = training.data$rating)
+    
+    pred.vector[row] <- model1.reg$pred - (scaled.combined.nba.data[row, ] %>% pull(rating))
+
+  }
+  error.vector[k] <- (mean(pred.vector^2))^(1/2)
+}
+
+# Check the error at each k
+pred.data <- data.frame(error.vector,
+                        k = 1:50)
+
+pred.data %>%
+  ggplot(aes(x = k,
+             y = error.vector)) +
+  geom_point()
+
+# find the minimum error value from the error.vector previously calculated
+min.error <- min(error.vector)
+# find the optimal k that is associated with the min.error
+optimal.k <- match(min.error, error.vector)
+
+print(paste0("Minimum Error: ", min.error))
+print(paste0("Optimal k Value: ", optimal.k))
+```
+
+Printed above are the optimal k value (k = 16) along with its error value at that k (~2.3099). A k value of 16 means that using the nearest 16 other players best predicts the rating of a given player, with an average prediction error of 2.31 rating points.
+
+Next, we will test our combined data using our random forest model (rf.caret.1 with mtry=3).
+
+```{r, cache = TRUE}
+combined.nba.data <- combined.nba.data %>% mutate(ratings)
+
+set.seed(3)
+# train is from caret
+rf.caret.2 <- train(rating~ ., 
+                    data = combined.nba.data,
+                    method = "rf",
+                    tuneGrid = data.frame(mtry = c(1, 2, 3)))
+print(rf.caret.2)
+
+```
+
+Above, we see that our best performing model was our random forest model, rf.caret.2, which trained on our combined data and had mtry=3. This model resulted in an RMSE Of ~2.15399. This performed better than both of our knn models (scaled with the before data and after data) and our random forest model rf.caret.1, which was trained on our "before" data. It is difficult to predict exactly how well our rf.caret.2 model will perform on new data because outliers can  affect the predictions of other players' ratings (as explained previously); however, we assume that our model's performance will remain relatively similar with an RMSE of around 2. It seems that the player stats are direct indicators of ratings unless a player with a season-ending injury or lack of games played is involved. This is why our model will maintain a relatively low overall error.

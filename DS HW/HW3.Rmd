@@ -1,0 +1,306 @@
+---
+title: "HW3"
+author: "Cody Kim, Kaela Finegan and Lucas Shin"
+date: "11/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message= FALSE, warning=FALSE)
+library(ranger)
+```
+
+We chose to use a data set concerning the race, religion, and sexual orientation of all Oscar winners since
+1928 in the following categories: Best Actress, Best Supporting Actor, Best Supporting Actress, and Best
+Director.
+
+Our research question is: how do race, religion, and sexual orientation change the likelihood of winning
+an Oscar?
+
+We care about this question because the Oscar winners are determined by 
+voters, and recently there has been discussion about the fairness of this type
+of voting given the history of discrimination in Hollywood and the film industry.
+A random forest will be meaningful to our research question because it makes a model based on every combination of variables and averages them to find how likely one is to win with each combination of demographics. 
+
+We decided to take out all the columns that were the "confidence" of other columns because we want to assume that every value was recorded with 100% confidence in the data set (especially considering there are missing values in the data set). We also decided to remove columns that didn't have to do with the demographics of the individual in each row such as: year_of_award, last_judgement_at, _trusted_judgements, _unit_state, etc. We also decided to take out date_of_birth and year_of_award. Originally we hoped to create an age column based on the year_of_award minus the date_of_birth, but we found that it would be too difficult by the severely different formats of each column. Thus our data is left with the columns: `_golden`, race_ethnicity, religion, and sexual_orientation with golden being the response variable. 
+
+A random forest will split our variables and display what combination of race, religion, and sexual orientation is optimal for winning an Oscar.
+
+
+```{r}
+
+#compare train and randomForest
+
+oscar <- read_csv("Oscars-demographics-DFE.csv")
+
+oscar <- oscar %>% 
+  dplyr::select(`_golden`, race_ethnicity, religion, sexual_orientation) 
+
+#assigning Na for religion as unknown
+oscar$religion <- str_replace(oscar$religion, "Na", "Unknown")
+oscar$sexual_orientation <- str_replace(oscar$sexual_orientation, "Na", "Unknown")
+```
+
+After diving deeper into our Oscar-winner data set, we realized that using a random forest was not the optimal technique to predict Oscar winners. This is because there are not many unique variable values and many of the generated trees will have the same splits (ex: straight vs. other). Additionally, two of the three variables are basically a single value (ex: race_ethnicity is almost all white, religion is almost all unknown). Thus, while we realize that our model will most likely result in a less than optimal number of correct predictions, we will attempt to construct the best model possible using tuning metrics and thresholds.
+
+```{r}
+set.seed(1)
+
+# print this out and see that kappa is 0 - only predicting no oscar - same as random chance.
+# we need to figure out how to make it start making positive predictions too
+# maybe each individual tree cuts off too soon
+# use ranger package instead randomForest. train calls other functions, adjust threshold for predicted probabilities
+
+# train is from caret
+rf.caret.1 <- train(factor(`_golden`) ~ ., 
+                    data = oscar,
+                    method = "rf",
+                    tuneGrid = data.frame(mtry = c(1, 2, 3)))
+# RandomForest
+rf2 <- randomForest(factor(`_golden`)~ ., 
+                    data = oscar)
+```
+
+We first used the train function from the caret package to build a model for predicting Oscar winners; however, we noticed that the model predicted 0 Oscar winners, so we decided not to use that model (since it was useless). We want a model that won't just predict no oscar for everyone. This will still have a high accuracy because most of our data does not win oscars, but this is not actually useful to us trying to predict when someone will win an oscar. Next, we used the randomForest function from the randomForest package to build a model for our data. This, too, failed to predict any Oscar winners, so we decided not to use this model either. Then we tried the ranger function. 
+
+```{r}
+# ranger package
+print("Ranger Function 1 (mtry = 3): ")
+system.time({
+  rf3 <- ranger(factor(`_golden`) ~ ., 
+                data = oscar,
+                probability = TRUE,
+                mtry = 3,
+                importance = "permutation") #,
+                #mtry = c(1, 2, 3))
+})
+
+print("Ranger Function 2 (mtry = 2): ")
+system.time({
+  rf4 <- ranger(factor(`_golden`) ~ ., 
+                data = oscar,
+                probability = TRUE,
+                mtry = 2,
+                importance = "permutation")
+  
+})
+
+print("Ranger Function 3 (mtry = 1): ")
+system.time({
+  rf5 <- ranger(factor(`_golden`) ~ ., 
+                data = oscar,
+                probability = TRUE,
+                importance = "permutation",
+                mtry = 1)
+})
+```
+Above are the printed runtimes for each ranger function we producted. The time elapsed is the runtime. 
+
+Since 95% of our actual values are no and only 5% are yes, a model that only predicts no's can do fairly well with our data. In terms of accuracy, if we predicted no each time, we would still have a 95% accuracy. This means accuracy is not a good metric to use to compare our random forests. We chose to consider sensitivity and specificity. Sensitivity is the number of true positives over all the actual positive values. This is really important to us because we want to be predicting some positive values correctly. Specificity is the number of true negatives over all the actual negatives. This is also important. Thus we decided to make our own metric that is 2 times the sensitivity and 1 times the specificity because sensitivity is twice as important to us as specificity. This is because we care more about how many of the actual yes values are predicted yes than we care about how many of the actual no values are predicted no. Then for each random forest model, we find the threshold that produces the highest value for our new metric.
+
+```{r}
+predictions <- predict(rf3, oscar)
+
+sensitivities <- c()
+specificities <- c()
+ourMetric <- c()
+possible.threshold <- seq(from = 0.05,
+                        to = 0.2,
+                        by = 0.01)
+
+for(threshold in possible.threshold){
+   
+   X <- threshold
+   
+   oscar.new <- oscar %>%
+     mutate(preds = case_when(predictions$predictions[,2] >= X ~ "Yes",
+                              TRUE ~ "No"))
+   
+   #Confusion Matrix
+   confusionMatrix <- table(oscar.new$`_golden`, oscar.new$preds)
+
+   #
+   sensitivities <- c(sensitivities, confusionMatrix[4]/(confusionMatrix[4]+confusionMatrix[2]))
+   specificities <- c(specificities, confusionMatrix[1]/(confusionMatrix[1]+confusionMatrix[3]))
+   
+   ourMetric <- c(ourMetric, 2*(confusionMatrix[4]/(confusionMatrix[4]+confusionMatrix[2]))+confusionMatrix[1]/(confusionMatrix[1]+confusionMatrix[3]))
+}
+
+
+print("Sensitivity: ")
+print(sensitivities)
+
+print("Specificities: ")
+print(specificities)
+
+print("ourMetric: ")
+print(ourMetric)
+
+print(max(ourMetric, na.rm = TRUE))
+max.ourMetric <- which(ourMetric == max(ourMetric, na.rm = TRUE))
+print(possible.threshold[max.ourMetric])
+```
+
+```{r}
+predictions <- predict(rf4, oscar)
+
+sensitivities <- c()
+specificities <- c()
+ourMetric <- c()
+possible.threshold <- seq(from = 0.05,
+                        to = 0.2,
+                        by = 0.01)
+
+for(threshold in possible.threshold){
+   
+   X <- threshold
+   
+   oscar.new <- oscar %>%
+     mutate(preds = case_when(predictions$predictions[,2] >= X ~ "Yes",
+                              TRUE ~ "No"))
+   
+   #Confusion Matrix
+   confusionMatrix <- table(oscar.new$`_golden`, oscar.new$preds)
+
+   #
+   sensitivities <- c(sensitivities, confusionMatrix[4]/(confusionMatrix[4]+confusionMatrix[2]))
+   specificities <- c(specificities, confusionMatrix[1]/(confusionMatrix[1]+confusionMatrix[3]))
+   
+   ourMetric <- c(ourMetric, 2*(confusionMatrix[4]/(confusionMatrix[4]+confusionMatrix[2]))+confusionMatrix[1]/(confusionMatrix[1]+confusionMatrix[3]))
+}
+
+
+print("Sensitivity: ")
+print(sensitivities)
+
+print("Specificities: ")
+print(specificities)
+
+print("ourMetric: ")
+print(ourMetric)
+
+print(max(ourMetric, na.rm = TRUE))
+max.ourMetric <- which(ourMetric == max(ourMetric, na.rm = TRUE))
+print(possible.threshold[max.ourMetric])
+```
+
+```{r}
+predictions <- predict(rf5, oscar)
+
+sensitivities <- c()
+specificities <- c()
+ourMetric <- c()
+possible.threshold <- seq(from = 0.05,
+                        to = 0.2,
+                        by = 0.01)
+
+for(threshold in possible.threshold){
+   
+   X <- threshold
+   
+   oscar.new <- oscar %>%
+     mutate(preds = case_when(predictions$predictions[,2] >= X ~ "Yes",
+                              TRUE ~ "No"))
+   
+   #Confusion Matrix
+   confusionMatrix <- table(oscar.new$`_golden`, oscar.new$preds)
+
+   #
+   sensitivities <- c(sensitivities, confusionMatrix[4]/(confusionMatrix[4]+confusionMatrix[2]))
+   specificities <- c(specificities, confusionMatrix[1]/(confusionMatrix[1]+confusionMatrix[3]))
+   
+   ourMetric <- c(ourMetric, 2*(confusionMatrix[4]/(confusionMatrix[4]+confusionMatrix[2]))+confusionMatrix[1]/(confusionMatrix[1]+confusionMatrix[3]))
+}
+
+
+print("Sensitivity: ")
+print(sensitivities)
+
+print("Specificities: ")
+print(specificities)
+
+print("ourMetric: ")
+print(ourMetric)
+
+print(max(ourMetric, na.rm = TRUE))
+max.ourMetric <- which(ourMetric == max(ourMetric, na.rm = TRUE))
+print(possible.threshold[max.ourMetric])
+```
+
+While our metric is 2.156 for threshold 0.05 and only 1.829  for threshold 0.06, we still want to choose threshold 0.06 as the best threshold for this model. This is because for threshold 0.05, we have a 1 sensitivity (which is good), but a 0.156 specificity. This means we are correctly guessing 100% of our positive actual values, but only predicting 15.6% of our negative actual values correctly. When we go to threshold 0.06 instead, we see that our correct positive predictions goes down to 56%. This is still better than randomly guessing, so it is still desireable. Our correct negative predictions goes up rom 15.6% to 70.9%. This is a huge increase and is much better than before. Therefore, threshold 0.06 with an ourMetric value of 1.829 is the best for this model. 
+
+Because we reject the threshold 0.05 for our model with mtry = 1, the maximum for “ourMetric” is 1.829 for that model, which is found at threshold 0.06. We will choose the best model by selecting the combination of mtry and threshold that gives us the highest “ourMetric” value. After removing threshold 0.05 from our mtry = 1 model, the maximum “ourMetric” value is 1.829 for mtry = 1, 1.836 at thresholds 0.06 and 0.07 for mtry = 2, and 1.832 at threshold 0.06 and 0.07 for mtry = 3. Therefore, our optimal model is mtry = 3, threshold 0.06 or 0.07.
+
+```{r}
+rf3$variable.importance
+```
+In ranger, variable importance tells us how much the model uses a given variable to make accurate predictions. In the context of our dataset, variable importance shows how important race_ethnicity, religion, and sexual_orientation are in predicting Oscar winners. A variable importance of 1.00 means that a variable perfectly predicts Oscar winners, 0.00 means that it doesn’t help or hurt the prediction of Oscar winners, and -1.00 means that a variable is awful in predicting Oscar winners and actually hurts the model. In our case, all three variables have a variable importance close to 0.00, meaning none of variables are good indicators for predicting Oscar winners. The best variable is [highest variable] because its variable importance is the highest. It is not surprising that our variables have low importance given that they are all categorical values that are essentially binary. Race_ethnicity is mostly White, religion is mostly unknown, and sexual orientation is mostly straight. The fact that our data is homogenous and largely binary reduces the possibility for several meaningful splits for any variable, hence why our variable importances hover around 0.
+
+```{r}
+predictions <- predict(rf3, oscar)
+
+X <- 0.06
+   
+oscar.new <- oscar %>%
+  mutate(preds = case_when(predictions$predictions[,2] >= X ~ TRUE,
+                              TRUE ~ FALSE))
+
+colnames(oscar.new)[1] <- "golden"
+oscar.new2 <- oscar.new %>% 
+  mutate(correct = ifelse(oscar.new$preds == oscar.new$golden, 1, 0))
+   
+#Confusion Matrix
+confusionMatrix <- table(oscar.new2$golden, oscar.new2$preds)
+
+confusionMatrix
+
+correct <- oscar.new2 %>% 
+  filter(golden == TRUE) %>% 
+  filter(correct == 1)
+# incorrect <- oscar.new2 %>% 
+#   filter(golden == TRUE) %>% 
+#   filter(correct == 0)
+
+
+print("All Predictions")
+table(oscar.new2$race_ethnicity)/nrow(oscar.new)
+table(oscar.new2$religion)/nrow(oscar.new)
+table(oscar.new2$sexual_orientation)/nrow(oscar.new)
+
+#(table(oscar.new2$race_ethnicity)/441)/(table(correct$race_ethnicity)/310)
+
+count <- count(correct)
+print("Correctly Predict Oscar Winners")
+table(correct$race_ethnicity)/nrow(correct)
+table(correct$religion)/nrow(correct)
+table(correct$sexual_orientation)/nrow(correct)
+
+# print("Incorrect Predictions")
+# table(incorrect$race_ethnicity)/count(incorrect)
+# table(incorrect$religion)/count(incorrect)
+# table(incorrect$sexual_orientation)/count(incorrect)
+
+```
+Our model seems only to predict the more represented groups as Oscar winners. For race_ethnicity, our model only predicts Black and White winners of Oscars. Black and White make up the highest percentage of the total population. The model predicts that no Asian, Hispanic, Middle Eastern, and Multiracial people will win.
+
+The model generally continues the trend of predicting that the more represented groups will win and excluding the smaller groups. For religion, the total population unknown percentage is 61%, but it's only 14% of the correctly predicted Oscar winners. Our model suggests that having an unknown religion reduces the likelihood of winning an Oscar. Our two largest religious groups (aside from Unknown) are Roman Catholic and Jewish. Jewish makes up 11% of the total population and Roman Catholic makes up 14%, but for our correctly predicted winners, it predicted 36% Jewish for the winners and 29% for Roman Catholic. Our model predicts Jewish Oscar success compared to Roman Catholic and the total population. 
+
+Finally, our model is notable for not predicting any Gay or Lesbian Oscar winners. Gay/Lesbian makes up 2% of the initial population, but 0% of the correctly predicted winners. 
+
+
+The basic building block of a random forest is a decision tree. A decision tree uses features to split data
+into separate groups. These splits keeping occurring until the parameters of the model are satisfied. The
+model will then use the data for each grouping to answer the research question. A random forest uses the
+average of a combination of uncorrelated decision trees to make its prediction. A random forest is better
+than a single decision tree because it does not let the error of an individual tree dictate the entire
+model.
+
+Our research question is: how do race, religion, and sexual orientation change the likelihood of winning
+an Oscar?
+
+Our model is okay at predicting Oscar winners from demographics that are highly represented (i.e. White, Black, Straight, Jewish, etc.), but is terrible at predicting Oscar winners from minority groups (i.e. Multiracial, Disciples of Christ, Lesbian, etc.). From the data, we see that actors from certain demographics are more likely to be nominated for Oscars, and thus people from those demographics are more likely to win. Therefore, without additional data on each Oscar nominee, our model is only decent at predicting Oscar winners from people who fall into the majority demographics.
+
+
+
+
+

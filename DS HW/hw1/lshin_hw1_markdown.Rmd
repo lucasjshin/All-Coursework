@@ -1,0 +1,131 @@
+---
+title: "lshin_hw1_markdown"
+author: "Lucas Shin"
+date: "9/21/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(tidyverse)
+library(openintro)
+```
+
+
+# 1
+```{r}
+mariokart %>%
+   filter(wheels >= 1) %>%
+   arrange(total_pr) %>%
+   select(title, id) %>% 
+   head(1)
+```
+"MarioKart (Wii) w/ wheel" (id: 290353981573), is the least expensive Mario Kart game that included at least 1 steering wheel in the ebay auction.
+
+
+# 2
+```{r}
+mariokart %>% 
+   select(ship_sp, 
+          ship_pr) %>% 
+   group_by(ship_sp) %>% 
+   summarize(range = max(ship_pr)-min(ship_pr)) 
+```
+The parcel shipping method had the greatest range, and the ups3Day shipping method had the smallest range.
+
+
+# 3
+```{r}
+mariokart %>% 
+   group_by(cond) %>% 
+   summarize(mean = mean(total_pr), median = median(total_pr))
+```
+The mean and median total prices of new and used Mario Kart games are shown above. The mean and median of the new games are very similar (only $0.20 apart), while the mean of the used games is $5.70 greater than its median.
+
+
+# 4
+```{r}
+library(ggplot2)
+library(openintro)
+```
+To explain why the mean and median total prices of the new and used games were not equal, I plotted the total_pr of the games (as shown below).
+
+
+For New Games:
+```{r}
+mariokart %>% 
+  filter(cond %in% c("new")) %>% 
+  ggplot(mapping = aes(x = total_pr)) +
+  geom_density()
+```
+
+For Old Games:
+```{r}
+mariokart %>% 
+  filter(cond %in% c("used")) %>% 
+  ggplot(mapping = aes(x = total_pr)) +
+  geom_density()
+```
+
+Comparing the two graphs shown above, I could make the assertion that the graph for the new games was much less skewed than the graph for old games. The graph for the used games is very skewed to the right, which affected the mean of the total price, making the mean much greater than the median. On the other hand, the graph for the new games is bimodal (two peaks) and looks to be much more evenly distributed. This is why its mean and median values are almost equal. 
+
+
+# 5
+First, I chose to plot the star_pr against the total_pr, as shown below.
+```{r}
+mariokart %>%
+  ggplot(aes(x = start_pr,
+             y = total_pr)) +
+  geom_point()
+```
+
+Then, I saw that there were two points out of the entire data set that were greater than $100. These were the outliers. I checked the Mario Kart data set to see why these two games were so expensive, and found that they both were parts of bundles, including other games like Guitar Hero and Spider man. Since the data set was only supposed to be for Mario Kart alone, I chose to remove these bundles of games.
+
+In order to remove the two outliers, I filtered the data set for games less than $100 and then re-graphed, as shown below. "mariokart2" is the filtered data set, with outliers removed.
+```{r}
+mariokart2 <- mariokart %>%
+  filter(total_pr < 100)
+
+mariokart2 %>%
+  ggplot(aes(x = start_pr,
+             y = total_pr)) +
+  geom_point()
+```
+
+
+For #6, #7, and #8, I will use the new data set, "mariokart2," instead of the original data set, "mariokart".
+
+# 6
+```{r}
+mariokart2 %>% 
+  select(cond, wheels, total_pr) %>% 
+  group_by(cond, wheels == 0) %>% 
+  summarize(median = median(total_pr))
+```
+
+The median total price for new games with at least one steering wheel was $54. 
+
+The median total price for new games with no steering wheel was $47.40. 
+
+The median total price for old games with at least one steering wheel was $45.50. 
+
+The median total price for old games with at least one steering wheel was $38.00. 
+
+
+# 7
+```{r}
+mariokart2 %>% 
+  group_by(cond) %>% 
+  summarize(proportionOfCond = mean(total_pr <= 50, na.rm = TRUE))
+```
+
+Given $50 to spend, the proportion of new games that I am able to purchase is 35.6% while the proportion of old games that I am able to purchase is 89.0%.
+
+
+# 8
+Based on my findings in #1-7, in order to maximize the total selling price of my game, I would sell a Mario Kart game that is new and has at least one steering wheel. In question #3, I learned that both the mean and median of new games were higher than that of the used games. Then, in question #6, I showed that the median total price of new games without a steering wheel was almost $7.00 less than that of new games with at least one steering wheel. Lastly, based on my findings for question #2 alone, I would not factor in the shipping method/price. This is because the range alone does not give me enough information to conclude that any one of the individual shipping methods is better than the others.
+

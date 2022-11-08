@@ -1,0 +1,9 @@
+"0","rf3 <- ranger(factor(`_golden`) ~ ., 
+                data = oscar,
+                probability = TRUE,
+                mtry = 3,
+                importance = ""permutation"") #,
+"
+"2","Error in rangerCpp(treetype, x, y.mat, independent.variable.names, mtry,  : 
+  function 'Rcpp_precious_remove' not provided by package 'Rcpp'
+"
